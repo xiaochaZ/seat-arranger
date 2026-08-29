@@ -13,6 +13,8 @@
 
 ## 界面截图
 
+![首页 · 四步向导](screenshots/screenshot-0-home.png)
+
 | 名单管理 | 教室布局 |
 | --- | --- |
 | ![名单管理](screenshots/screenshot-1-roster.png) | ![教室布局](screenshots/screenshot-2-layout.png) |
