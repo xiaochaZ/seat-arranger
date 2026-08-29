@@ -11,7 +11,15 @@
 - 数据存浏览器 localStorage（不上传），支持 JSON 备份/恢复。
 - 支持安装为桌面应用（Chrome/Edge 菜单 → 安装为应用）。
 
-> 📷 截图占位：四步向导 + 座位网格 + 违规面板（后续可替换为实际截图）
+## 界面截图
+
+| 名单管理 | 教室布局 |
+| --- | --- |
+| ![名单管理](screenshots/screenshot-1-roster.png) | ![教室布局](screenshots/screenshot-2-layout.png) |
+
+| 排座规则 | 排座结果 |
+| --- | --- |
+| ![排座规则](screenshots/screenshot-3-rules.png) | ![排座结果](screenshots/screenshot-4-result.png) |
 
 ## 功能一览
 
