@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>班级排座位</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">📚 班级排座位</div>
+      <select id="classSelect" class="class-select" title="当前班级"></select>
+      <button id="btnAddClass" class="btn btn-ghost btn-sm">＋ 新建班级</button>
+    </div>
+    <nav class="steps">
+      <button class="step-btn active" data-step="1">① 名单</button>
+      <button class="step-btn" data-step="2">② 布局</button>
+      <button class="step-btn" data-step="3">③ 规则</button>
+      <button class="step-btn" data-step="4">④ 排座</button>
+    </nav>
+  </header>
+
+  <main id="main">
+
+    <!-- ══════════ 步骤 1：名单 ══════════ -->
+    <section id="step-1" class="step-panel active">
+      <div class="panel-head">
+        <h2>班级名单</h2>
+        <div class="panel-actions">
+          <button id="btnPaste" class="btn">📋 粘贴导入</button>
+          <button id="btnImportFile" class="btn">📁 导入名单/备份</button>
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.txt,.json" hidden>
+          <button id="btnAddStudent" class="btn btn-primary">＋ 添加学生</button>
+          <button id="btnClearRoster" class="btn btn-danger" title="清空当前班级全部学生">🗑 清空名单</button>
+        </div>
+      </div>
+      <div id="rosterStats" class="muted"></div>
+      <div id="rosterTableWrap" class="table-wrap">
+        <table id="rosterTable" class="roster-table">
+          <thead>
+            <tr><th>姓名</th><th>学号</th><th>性别</th><th>身高(cm)</th><th>备注</th><th class="col-op"></th></tr>
+          </thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+      <div id="rosterEmpty" class="empty-hint hidden">
+        <p>还没有学生。</p>
+        <p>可以 <b>粘贴名单</b>（每行一个姓名）、<b>导入 Excel/CSV</b> 花名册，或手动 <b>添加学生</b>。</p>
+      </div>
+    </section>
+
+    <!-- ══════════ 步骤 2：布局 ══════════ -->
+    <section id="step-2" class="step-panel">
+      <div class="panel-head">
+        <h2>教室布局</h2>
+        <div class="panel-actions layout-params">
+          <label>排数 <input type="number" id="layoutRows" min="1" max="12" value="6"></label>
+          <label>列数 <input type="number" id="layoutCols" min="2" max="16" value="8"></label>
+          <label>门在 <select id="layoutDoor"><option value="left">左侧</option><option value="right">右侧</option></select></label>
+          <label>过道位置 <input type="text" id="layoutAisles" value="2,4,6" placeholder="如 2,4,6" title="过道在第几列后，多个用逗号分隔，如 2,4,6 = xx|xx|xx|xx；空 = 无过道"></label>
+        </div>
+      </div>
+      <div class="layout-hint muted" style="margin:-8px 0 10px;font-size:12px">门在左 → 座位号 (排,列) 从左数，第 1 列靠门；门在右 → 从右数，最后一列靠门。过道位置：多个过道用逗号分隔，例 <b>2,4,6</b> → xx|xx|xx|xx；<b>2,5,7</b> → xx|xxx|xx|xx（含 3 列组，可坐 3 人同桌）</div>
+      <div id="layoutStats" class="layout-stats"></div>
+      <div class="layout-tools">
+        <span class="tool-label">区域工具：</span>
+        <select id="areaSelect" class="area-select"></select>
+        <button id="btnNewArea" class="btn btn-sm">＋ 新建区域</button>
+        <button id="btnDelArea" class="btn btn-sm btn-danger">删除区域</button>
+        <span class="tool-hint">在网格中<b>点击座位</b>：加入/移出当前选中区域；<b>右键</b>：标记/取消不可用座位</span>
+      </div>
+      <div id="layoutGrid" class="seat-grid"></div>
+      <div class="legend">
+        <span class="lg"><span class="chip chip-zone">区域底色</span> 属于选中区域</span>
+        <span class="lg"><span class="chip chip-bad">灰色斜线</span> 不可用座位</span>
+        <span class="lg"><span class="chip chip-plain"></span> 普通座位</span>
+      </div>
+    </section>
+
+    <!-- ══════════ 步骤 3：规则 ══════════ -->
+    <section id="step-3" class="step-panel">
+      <div class="panel-head">
+        <h2>排座规则 <span class="muted" id="ruleCount"></span></h2>
+        <div class="panel-actions">
+          <button id="btnAddRule" class="btn btn-primary">＋ 添加规则</button>
+        </div>
+      </div>
+      <div id="ruleList" class="rule-list"></div>
+      <div id="ruleEmpty" class="empty-hint hidden">
+        <p>还没有排座规则。</p>
+        <p>添加规则来满足你的需求，例如：<b>张三和李四必须同桌</b>、<b>王五和赵六不能坐一起</b>、<b>近视的同学坐前排</b>。每条规则可设置<b>权重</b>（越高越优先满足），重要规则可勾选<b>硬约束</b>（必须满足）。</p>
+      </div>
+    </section>
+
+    <!-- ══════════ 步骤 4：排座 ══════════ -->
+    <section id="step-4" class="step-panel">
+      <div class="panel-head">
+        <h2>排座结果</h2>
+        <div class="panel-actions">
+          <label>方案数 <input type="number" id="genCount" value="10" min="1" max="20"></label>
+          <button id="btnGenerate" class="btn btn-primary">🎲 生成方案</button>
+          <button id="btnSaveSolution" class="btn">💾 保存当前方案</button>
+          <span class="btn-sep"></span>
+          <button id="btnExportPNG" class="btn">🖼 导出图片</button>
+          <button id="btnExportExcel" class="btn">📊 导出 Excel</button>
+          <button id="btnExportJSON" class="btn">📦 备份配置</button>
+        </div>
+      </div>
+      <div id="solutionBar" class="solution-bar">
+        <div id="solutionInfo" class="muted"></div>
+      </div>
+      <div class="result-layout">
+        <div id="solutionSide" class="solution-side">
+          <div class="side-title">方案列表</div>
+          <div id="solutionList" class="solution-list"></div>
+          <div class="side-title side-title-rules">规则 <span id="resultRuleCount" class="muted"></span></div>
+          <div id="resultRules" class="result-rules"></div>
+        </div>
+        <div class="result-main">
+          <div id="resultGrid" class="seat-grid"></div>
+          <aside id="violationPanel" class="violation-panel">
+            <h3>违规报告</h3>
+            <div id="violationList"></div>
+          </aside>
+        </div>
+      </div>
+      <div id="resultEmpty" class="empty-hint hidden">
+        <p>还没有生成座位表。</p>
+        <p>确认名单、布局、规则都已配置好后，点击 <b>🎲 生成方案</b>。生成后可以直接<b>拖动学生卡片</b>交换座位。</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 通用弹窗 -->
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modalTitle"></h3>
+        <button id="modalClose" class="modal-close">✕</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- 生成进度遮罩 -->
+  <div id="genOverlay" class="gen-overlay hidden">
+    <div class="gen-box">
+      <div class="gen-spinner"></div>
+      <div id="genText">正在生成方案…</div>
+      <div class="gen-progress"><div id="genBar" class="gen-bar"></div></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- SheetJS（lib 缺失时自动降级 CSV，见 parser/export 模块检测） -->
+  <script src="lib/xlsx.full.min.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/roster.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/rules.js"></script>
+  <script src="js/cost.js"></script>
+  <script src="js/anneal.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/drag.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

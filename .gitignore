@@ -1,0 +1,14 @@
+# 内部交接文档（含本机路径，不入库）
+GitHub推送交接说明.md
+
+# 临时截图
+_shot*.png
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# 本地备份
+*.bak
