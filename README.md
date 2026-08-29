@@ -53,7 +53,7 @@ node test/algorithm.test.js   # 算法单测 22/22
 ├── js/                     11 个功能模块（原生 JS，全局 Seat 命名空间）
 ├── lib/xlsx.full.min.js    SheetJS 0.18.5（Excel 读写）
 ├── test/                   算法单测 / 性能压测 / 工具脚本
-├── 需求文档.md / 开发计划.md / 使用说明.md
+├── 使用说明.md
 ```
 
 ## 开源协议
