@@ -330,13 +330,18 @@
       '<div class="form-row only-separate"><label>远离程度</label>' +
       '<select id="r_mode">' +
       '<option value="desk"' + (r.mode === 'desk' ? ' selected' : '') + '>不能同桌</option>' +
-      '<option value="distance"' + (r.mode === 'distance' ? ' selected' : '') + '>按距离：至少隔 N 排 / N 列</option>' +
+      '<option value="manhattan"' + ((r.mode === 'manhattan' || r.mode === 'distance') ? ' selected' : '') + '>按距离：曼哈顿距离至少 N 格</option>' +
+      '<option value="hv"' + (r.mode === 'hv' ? ' selected' : '') + '>按距离：横向、竖向分别至少 N 列/排</option>' +
       '</select></div>' +
-      '<div class="form-row only-separate" id="distRow" ' + (r.mode === 'distance' ? '' : 'style="display:none"') + '>' +
+      '<div class="form-row only-separate" id="distRow" ' + ((r.mode === 'manhattan' || r.mode === 'distance') ? '' : 'style="display:none"') + '>' +
+      '<label>最小距离（格）</label>' +
+      '<input type="number" id="r_minDist" min="0" max="24" style="width:80px" value="' + (r.minDist != null ? r.minDist : ((r.minRows || 0) + (r.minCols || 0))) + '">' +
+      '<div class="hint">曼哈顿距离 = 行差 + 列差（过道占一格）。如"相距至少 3 格"：同行隔 3 列、或隔 1 排 2 列等</div></div>' +
+      '<div class="form-row only-separate" id="hvRow" ' + (r.mode === 'hv' ? '' : 'style="display:none"') + '>' +
       '<label>最小距离</label>' +
-      '至少隔 <input type="number" id="r_minRows" min="0" max="12" style="width:64px" value="' + (r.minRows || 0) + '"> 排，' +
-      '至少隔 <input type="number" id="r_minCols" min="0" max="15" style="width:64px" value="' + (r.minCols || 0) + '"> 列' +
-      '<div class="hint">留空或 0 表示该方向不限；如"至少隔 2 排"则填排=2、列=0</div></div>' +
+      '竖向至少隔 <input type="number" id="r_minRows" min="0" max="12" style="width:64px" value="' + (r.minRows || 0) + '"> 排，' +
+      '横向至少隔 <input type="number" id="r_minCols" min="0" max="15" style="width:64px" value="' + (r.minCols || 0) + '"> 列' +
+      '<div class="hint">两个方向都要满足才算达标；填 0 表示该方向不限。如"竖向至少隔 2 排"则竖向=2、横向=0</div></div>' +
       '<div class="form-row only-area"><label>目标区域</label><select id="r_area">' + areaOpts + '</select>' +
       '<div class="hint">区域需先在「布局」页框选</div></div>' +
       '<div class="form-row only-ban"><label>禁坐范围</label>' +
@@ -368,7 +373,9 @@
     typeSel.onchange = applyTypeUI;
     applyTypeUI();
     body.querySelector('#r_mode').onchange = function () {
-      body.querySelector('#distRow').style.display = this.value === 'distance' ? '' : 'none';
+      const v = this.value;
+      body.querySelector('#distRow').style.display = (v === 'manhattan' || v === 'distance') ? '' : 'none';
+      body.querySelector('#hvRow').style.display = v === 'hv' ? '' : 'none';
     };
     body.querySelector('#r_banType').onchange = function () {
       body.querySelector('#banAreaRow').style.display = this.value === 'area' ? '' : 'none';
@@ -386,8 +393,14 @@
       rule.bId = body.querySelector('#r_b').value || null;
       rule.cId = body.querySelector('#r_c') ? body.querySelector('#r_c').value || null : null;
       rule.mode = body.querySelector('#r_mode').value;
-      rule.minRows = Math.max(0, parseInt(body.querySelector('#r_minRows').value) || 0);
-      rule.minCols = Math.max(0, parseInt(body.querySelector('#r_minCols').value) || 0);
+      if (rule.mode === 'hv') {
+        rule.minRows = Math.max(0, parseInt(body.querySelector('#r_minRows').value) || 0);
+        rule.minCols = Math.max(0, parseInt(body.querySelector('#r_minCols').value) || 0);
+        delete rule.minDist;
+      } else {
+        rule.minDist = Math.max(0, parseInt(body.querySelector('#r_minDist').value) || 0);
+        delete rule.minRows; delete rule.minCols;
+      }
       rule.areaId = body.querySelector('#r_area') ? body.querySelector('#r_area').value || null : rule.areaId;
       rule.seat = body.querySelector('#r_banSeat') ? body.querySelector('#r_banSeat').value || null : rule.seat;
       rule.weight = parseInt(body.querySelector('#r_weight').value) || 0;

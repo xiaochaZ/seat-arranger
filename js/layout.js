@@ -122,6 +122,13 @@
     return { dr: Math.abs(a.row - b.row), dc: Math.abs(a.col - b.col) };
   }
 
+  /** 两座位曼哈顿距离：|Δ排| + |Δ列|，列按含过道的网格坐标计（过道占一轨） */
+  function manhattanDistance(layout, keyA, keyB) {
+    const a = parseSeatKey(keyA), b = parseSeatKey(keyB);
+    if (!a || !b) return 9999;
+    return Math.abs(a.row - b.row) + Math.abs(gridColIndex(layout, a.col) - gridColIndex(layout, b.col));
+  }
+
   /** 列 c 在 grid 中的列索引（每个过道占一个额外轨道） */
   function gridColIndex(layout, col) {
     let off = 0;
@@ -207,7 +214,7 @@
   global.Seat.Layout = {
     ZONE_COLORS, defaultLayout, normalizeAisles, columnGroups, groupIndexOf,
     seatKey, parseSeatKey, allSeats, availableSeats,
-    deskNo, sameDesk, sameDeskN, seatDistance, gridColIndex, gridAisleIndex, displayCol,
+    deskNo, sameDesk, sameDeskN, seatDistance, manhattanDistance, gridColIndex, gridAisleIndex, displayCol,
     areaOfSeat, areaIndexOfSeat, seatLabel,
     addArea, renameArea, removeArea, findArea, toggleAreaSeat, canGenerate
   };

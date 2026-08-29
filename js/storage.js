@@ -68,6 +68,24 @@
     return layout;
   }
 
+  /** 迁移旧版隔离规则：mode='distance' 拆分为 manhattan（minDist）与 hv（minRows+minCols）两种模式 */
+  function migrateRules(d) {
+    if (!d || !Array.isArray(d.rules)) return;
+    d.rules.forEach(function (r) {
+      if (!r || r.type !== 'separate') return;
+      if (r.mode === 'distance') {
+        if (r.minDist != null) r.mode = 'manhattan';                  // 上一版迁移产物：已是曼哈顿语义
+        else if ((r.minRows || 0) > 0 || (r.minCols || 0) > 0) r.mode = 'hv'; // 旧横竖向双阈值语义
+        else r.mode = 'manhattan';                                    // 无阈值 → 默认曼哈顿
+      }
+      if (r.mode === 'manhattan' && r.minDist == null) r.minDist = 2;
+      if (r.mode === 'hv') {
+        if (r.minRows == null) r.minRows = 1;
+        if (r.minCols == null) r.minCols = 1;
+      }
+    });
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -80,6 +98,7 @@
       Object.keys(parsed.data).forEach(function (cid) {
         const d = parsed.data[cid];
         if (d && d.layout) migrateLayout(d.layout);
+        if (d) migrateRules(d);
       });
       if (!parsed.currentClassId || !parsed.data[parsed.currentClassId]) parsed.currentClassId = null;
       return parsed;

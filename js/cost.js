@@ -54,17 +54,29 @@
             desc: nameOf(rule.aId) + ' 与 ' + nameOf(rule.bId) + ' 仍是同桌'
           };
         }
-        const d = S.Layout.seatDistance(ka, kb);
-        const lackR = Math.max(0, (rule.minRows || 0) - d.dr);
-        const lackC = Math.max(0, (rule.minCols || 0) - d.dc);
-        if (lackR === 0 && lackC === 0) return { violated: false, amount: 0, desc: '' };
-        const amount = Math.max(1, lackR, lackC);
-        const need = [];
-        if (rule.minRows > 0) need.push(rule.minRows + '排');
-        if (rule.minCols > 0) need.push(rule.minCols + '列');
+        if (rule.mode === 'hv') {
+          // 横向/竖向双阈值：两个方向都要达标
+          const d = S.Layout.seatDistance(ka, kb);
+          const lackR = Math.max(0, (rule.minRows || 0) - d.dr);
+          const lackC = Math.max(0, (rule.minCols || 0) - d.dc);
+          if (lackR === 0 && lackC === 0) return { violated: false, amount: 0, desc: '' };
+          const amount = Math.max(1, lackR, lackC);
+          const need = [];
+          if (rule.minRows > 0) need.push('竖向至少隔 ' + rule.minRows + ' 排');
+          if (rule.minCols > 0) need.push('横向至少隔 ' + rule.minCols + ' 列');
+          return {
+            violated: true, amount: amount,
+            desc: nameOf(rule.aId) + ' 与 ' + nameOf(rule.bId) + ' 需' + need.join('、') + '，实际仅竖向隔 ' + d.dr + ' 排、横向隔 ' + d.dc + ' 列'
+          };
+        }
+        // 曼哈顿距离（含旧 mode='distance' 兼容）
+        const d = S.Layout.manhattanDistance(layout, ka, kb);
+        const need = rule.minDist || 0;
+        if (d >= need) return { violated: false, amount: 0, desc: '' };
+        const amount = Math.max(1, need - d);
         return {
           violated: true, amount: amount,
-          desc: nameOf(rule.aId) + ' 与 ' + nameOf(rule.bId) + ' 需隔 ' + need.join('、') + '，实际仅隔 ' + d.dr + '排' + d.dc + '列'
+          desc: nameOf(rule.aId) + ' 与 ' + nameOf(rule.bId) + ' 需相距至少 ' + need + ' 格（曼哈顿距离），实际仅 ' + d + ' 格'
         };
       }
       case 'area': {

@@ -127,17 +127,47 @@ test('隔离规则：不同桌模式', function () {
   r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r2c1' }), [rule], ctx);
   assert.strictEqual(r.totalCost, 0, '不同桌 → 满足');
 });
-test('隔离规则：按距离且违规量随差距量化', function () {
+test('隔离规则：曼哈顿距离且违规量随差距量化', function () {
   const students = makeStudents(['张三', '李四']);
   const L = makeLayout({ rows: 6, cols: 4, aisles: [] });
   const ctx = { layout: L, students: students };
-  const rule = { id: 'r1', type: 'separate', mode: 'distance', aId: 's1', bId: 's2', minRows: 2, minCols: 0, weight: 40, hard: false };
+  const rule = { id: 'r1', type: 'separate', mode: 'manhattan', aId: 's1', bId: 's2', minDist: 3, weight: 40, hard: false };
   let r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r1c2' }), [rule], ctx);
-  assert.strictEqual(r.totalCost, 80, '差距2排 → 违规量2 → 代价 2×40');
+  assert.strictEqual(r.totalCost, 80, '同行隔1列 → 曼哈顿1 → 差2 → 2×40');
   r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r2c1' }), [rule], ctx);
-  assert.strictEqual(r.totalCost, 40);
-  r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r3c1' }), [rule], ctx);
-  assert.strictEqual(r.totalCost, 0);
+  assert.strictEqual(r.totalCost, 80, '隔1排 → 曼哈顿1 → 差2 → 2×40');
+  r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r2c2' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 40, '对角隔1排1列 → 曼哈顿2 → 差1 → 1×40');
+  r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r4c1' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 0, '隔3排 → 曼哈顿3 → 满足');
+});
+test('隔离规则：旧 mode=distance 按曼哈顿兼容', function () {
+  const students = makeStudents(['张三', '李四']);
+  const L = makeLayout({ rows: 6, cols: 4, aisles: [] });
+  const ctx = { layout: L, students: students };
+  const rule = { id: 'r1', type: 'separate', mode: 'distance', aId: 's1', bId: 's2', minDist: 2, weight: 40, hard: false };
+  const r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r1c2' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 40, 'distance 别名按曼哈顿：距离1 < 2 → 违规');
+});
+test('隔离规则：横向+竖向双阈值（mode=hv）', function () {
+  const students = makeStudents(['张三', '李四']);
+  const L = makeLayout({ rows: 6, cols: 4, aisles: [] });
+  const ctx = { layout: L, students: students };
+  const rule = { id: 'r1', type: 'separate', mode: 'hv', aId: 's1', bId: 's2', minRows: 2, minCols: 1, weight: 40, hard: false };
+  let r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r1c2' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 80, '竖向差0<2 → 违规量2 → 2×40');
+  r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r2c1' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 40, '竖向差1<2 → 违规量1');
+  r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r2c3' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 40, '横向达标但竖向差1<2 → 仍违规');
+  r = S.Cost.evaluate(makeAssignment({ 0: 'r1c1', 1: 'r3c2' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 0, '竖向差2且横向差1 → 满足');
+});
+test('曼哈顿距离：过道计入距离', function () {
+  const L = makeLayout({ rows: 3, cols: 6, aisles: [3] });
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c1', 'r1c2'), 1, '同组相邻 1 格');
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c3', 'r1c4'), 2, '跨过道相邻算 2 格');
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c3', 'r2c4'), 3, '行差1 + 列差2 = 3');
 });
 test('区域规则：在区域内满足，不在则违规', function () {
   const students = makeStudents(['张三']);
@@ -182,7 +212,7 @@ test('增量评估器：随机交换后与全量评估一致（含 3 人同桌�
   const ctx = { layout: L, students: students };
   const rules = [
     { id: 'r1', type: 'pair', aId: 's1', bId: 's2', cId: 's3', weight: 80, hard: true },
-    { id: 'r2', type: 'separate', mode: 'distance', aId: 's4', bId: 's5', minRows: 2, minCols: 1, weight: 50, hard: false },
+    { id: 'r2', type: 'separate', mode: 'manhattan', aId: 's4', bId: 's5', minDist: 3, weight: 50, hard: false },
     { id: 'r3', type: 'area', aId: 's6', areaId: 'a1', weight: 60, hard: false },
     { id: 'r4', type: 'ban', aId: 's7', seat: 'r4c9', weight: 40, hard: false },
     { id: 'r5', type: 'separate', mode: 'desk', aId: 's8', bId: 's9', weight: 30, hard: false }
@@ -249,7 +279,7 @@ test('退火：隔离+区域软约束显著优于随机', function () {
   const L = makeLayout({ rows: 6, cols: 8, aisles: [2, 4, 6] });
   const rules = [
     { id: 'r1', type: 'separate', mode: 'desk', aId: 's1', bId: 's2', weight: 80, hard: false },
-    { id: 'r2', type: 'separate', mode: 'distance', aId: 's3', bId: 's4', minRows: 2, minCols: 1, weight: 60, hard: false },
+    { id: 'r2', type: 'separate', mode: 'hv', aId: 's3', bId: 's4', minRows: 2, minCols: 1, weight: 60, hard: false },
     { id: 'r3', type: 'area', aId: 's5', areaId: 'a1', weight: 70, hard: false }
   ];
   L.areas = [{ id: 'a1', name: '前排', seats: ['r1c1', 'r1c2', 'r1c3', 'r1c4', 'r1c5', 'r1c6', 'r1c7', 'r1c8'] }];

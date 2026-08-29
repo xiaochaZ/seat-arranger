@@ -3,8 +3,9 @@
  * 规则结构：
  *   { id, type: 'pair'|'separate'|'area'|'ban',
  *     aId, bId,                 // pair/separate
- *     mode: 'desk'|'distance',  // separate：'desk'=不同桌；'distance'=至少隔 N 排/列
- *     minRows, minCols,         // separate(mode='distance')
+ *     mode: 'desk'|'manhattan'|'hv',  // separate：'desk'=不同桌；'manhattan'=曼哈顿距离至少 N 格；'hv'=横向/竖向分别至少 N 列/排
+ *     minDist,                  // separate(mode='manhattan')：最小曼哈顿距离（|Δ排|+|Δ列|，含过道）
+ *     minRows, minCols,         // separate(mode='hv')：竖向至少隔 N 排、横向至少隔 N 列
  *     areaId,                   // area/ban（区域）
  *     seat,                     // ban（具体座位）
  *     weight: 0~100, hard: bool }
@@ -20,8 +21,8 @@
       id: global.Seat.Storage.uid('r'),
       type: type || 'pair',
       aId: null, bId: null, cId: null,
-      mode: 'distance',
-      minRows: 1, minCols: 1,
+      mode: 'manhattan',
+      minDist: 2, minRows: 1, minCols: 1,
       areaId: null, seat: null,
       weight: 50, hard: false
     };
@@ -71,10 +72,13 @@
       case 'separate': {
         const a = studentName(students, rule.aId), b = studentName(students, rule.bId);
         if (rule.mode === 'desk') return a + ' 与 ' + b + ' 不能同桌';
-        const parts = [];
-        if (rule.minRows > 0) parts.push('至少隔 ' + rule.minRows + ' 排');
-        if (rule.minCols > 0) parts.push('至少隔 ' + rule.minCols + ' 列');
-        return a + ' 与 ' + b + ' 需' + (parts.join('、') || '保持距离');
+        if (rule.mode === 'hv') {
+          const parts = [];
+          if ((rule.minRows || 0) > 0) parts.push('竖向至少隔 ' + rule.minRows + ' 排');
+          if ((rule.minCols || 0) > 0) parts.push('横向至少隔 ' + rule.minCols + ' 列');
+          return a + ' 与 ' + b + ' 需' + (parts.join('、') || '保持距离');
+        }
+        return a + ' 与 ' + b + ' 需相距至少 ' + (rule.minDist || 0) + ' 格（曼哈顿距离）';
       }
       case 'area': {
         const area = layout ? S.Layout.findArea(layout, rule.areaId) : null;
