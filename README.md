@@ -1,6 +1,7 @@
 # 班级排座位软件
 
 [![License](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/xiaochaZ/seat-arranger)](https://github.com/xiaochaZ/seat-arranger/releases)
 [![GitHub stars](https://img.shields.io/github/stars/xiaochaZ/seat-arranger)](https://github.com/xiaochaZ/seat-arranger)
 [![纯前端 · 零依赖](https://img.shields.io/badge/纯前端-零依赖-brightgreen.svg)](index.html)
 
