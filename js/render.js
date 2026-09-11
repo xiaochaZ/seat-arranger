@@ -82,13 +82,26 @@
   }
 
   /* ── 结果网格 ── */
-  function renderResultGrid(container, layout, students, assignment, rules) {
+  function renderResultGrid(container, layout, students, assignment, rules, groups) {
     const S = global.Seat;
-    const ctx = { layout: layout, students: students };
+    const ctx = { layout: layout, students: students, groups: groups || [] };
     const evalResult = S.Cost.evaluate(assignment, rules, ctx);
+    // 硬锁定座位：学生id → 锁定座位 key（拖拽时禁止移动）
+    const pins = S.Rules.pinsOf(rules, layout);
+    // 小组标记：小组成员 → G1/G2…（按规则里引用的小组顺序编号）
+    const groupTag = {};
+    let gi = 0;
+    (rules || []).forEach(function (r) {
+      if (!r || r.type !== 'group') return;
+      const g = S.Groups.find(groups, r.groupId);
+      if (!g) return;
+      gi++;
+      const tag = 'G' + gi;
+      S.Groups.membersOf(g).forEach(function (sid) { if (!groupTag[sid]) groupTag[sid] = { tag: tag, name: g.name }; });
+    });
     const violationKeys = {}; // 座位key → 违规条数
     evalResult.violations.forEach(function (v) {
-      if (!v.rule) return;
+      if (!v.rule || v.soft) return;   // 「尽量」类违规不标红座位，只在违规面板里提示
       // 找涉及座位
       if (v.rule.type === 'pair' || v.rule.type === 'separate') {
         [v.rule.aId, v.rule.bId].forEach(function (sid) {
@@ -128,34 +141,41 @@
       else if (areaIdx >= 0) div.classList.add('zone-' + (areaIdx % S.Layout.ZONE_COLORS.length));
       const sid = assignment[key];
       const badCount = violationKeys[key] || 0;
+      const lockedFor = pins.bySeat[key];
+      if (lockedFor && lockedFor === sid) div.classList.add('locked');
       if (badCount > 0) div.classList.add('violate');
       if (sid) {
         const pc = pairColors[sid];
         if (pc) div.classList.add(pc);
+        const gt = groupTag[sid];
         div.innerHTML =
           '<div class="seat-no">' + esc(S.Layout.seatLabel(layout, key)) + '</div>' +
           '<div class="seat-name">' + esc(nameOf[sid] || '?') + '</div>' +
+          (gt ? '<span class="group-tag" title="' + esc(gt.name) + '">' + esc(gt.tag) + '</span>' : '') +
+          (lockedFor === sid ? '<span class="lock-tag" title="已锁定在此座位">🔒</span>' : '') +
           (badCount > 0 ? '<span class="badge">' + badCount + '</span>' : '');
       } else {
         div.classList.add('empty-seat');
         div.innerHTML = '<div class="seat-no">' + esc(S.Layout.seatLabel(layout, key)) + '</div><div class="seat-name">空</div>';
       }
-      div.draggable = !unavailable && !!sid;
+      div.draggable = !unavailable && !!sid && !pins.byStudent[sid];
       return div;
     });
     return evalResult;
   }
 
   /* ── 名单表格 ── */
-  function renderRoster(state, bodyEl) {
+  function renderRoster(state, bodyEl, picked) {
     const S = global.Seat;
     const students = S.Roster.students(state);
     if (!students.length) {
       bodyEl.innerHTML = '';
       return 0;
     }
+    const pick = picked || {};
     bodyEl.innerHTML = students.map(function (s) {
-      return '<tr data-id="' + s.id + '">' +
+      return '<tr data-id="' + s.id + '"' + (pick[s.id] ? ' class="picked"' : '') + '>' +
+        '<td class="col-pick"><input type="checkbox" data-pick="' + s.id + '"' + (pick[s.id] ? ' checked' : '') + ' title="勾选以组建/编辑小组"></td>' +
         '<td><input data-f="name" value="' + esc(s.name) + '"></td>' +
         '<td><input data-f="studentNo" value="' + esc(s.studentNo) + '"></td>' +
         '<td><input data-f="gender" value="' + esc(s.gender) + '"></td>' +
@@ -172,12 +192,14 @@
     const S = global.Seat;
     const rules = S.Rules.rulesOf(state);
     const students = S.Roster.students(state);
-    const layout = (S.Storage.currentData(state) || {}).layout;
+    const d = S.Storage.currentData(state) || {};
+    const layout = d.layout;
+    const groups = d.groups || [];
     if (!rules.length) { container.innerHTML = ''; return 0; }
     container.innerHTML = rules.map(function (r) {
       return '<div class="rule-card" data-id="' + r.id + '">' +
         '<span class="rule-type t-' + r.type + '">' + S.Rules.TYPE_NAMES[r.type] + '</span>' +
-        '<div class="rule-desc">' + esc(S.Rules.describeRule(r, students, layout)) +
+        '<div class="rule-desc">' + esc(S.Rules.describeRule(r, students, layout, groups)) +
           (r.hard ? '<span class="hard-tag">【硬约束】</span>' : '') + '</div>' +
         '<label class="hard-check"><input type="checkbox" data-hard="1"' + (r.hard ? ' checked' : '') + '>硬约束</label>' +
         '<span class="rule-weight">权重 <input type="range" data-weight="1" min="0" max="100" value="' + r.weight + '">' +
@@ -223,8 +245,8 @@
     }
     violations.forEach(function (v) {
       const item = document.createElement('div');
-      item.className = 'vio-item';
-      // 收集涉及座位 key
+      item.className = 'vio-item' + (v.soft ? ' soft' : '');
+      // 收集涉及座位
       const keys = [];
       if (v.rule && layout && assignment) {
         const ids = (v.rule.type === 'pair' || v.rule.type === 'separate')
@@ -236,31 +258,35 @@
       }
       item.dataset.keys = keys.join(',');
       item.innerHTML =
-        '<span class="vio-w">' + (v.hard ? '🔒' : v.amount) + '</span>' +
+        '<span class="vio-w">' + (v.soft ? '尽量' : (v.hard ? '🔒' : v.amount)) + '</span>' +
         '<span>' + esc(v.desc) + '</span>';
       container.appendChild(item);
     });
   }
 
   /* ── 结果页规则列表（所有规则 + 当前方案满足状态） ── */
-  function renderResultRules(container, rules, students, layout, evalResult) {
+  function renderResultRules(container, rules, students, layout, evalResult, groups) {
     container.innerHTML = '';
     if (!rules || !rules.length) {
       container.innerHTML = '<div class="empty-tip">暂无规则，可到「③ 规则」页添加</div>';
       return 0;
     }
     const badIds = {};
+    const softIds = {};
     (evalResult.violations || []).forEach(function (v) {
-      if (v.rule) badIds[v.rule.id] = true;
+      if (!v.rule) return;
+      if (v.soft) softIds[v.rule.id] = true;   // 只差"尽量"的部分：不判失败，但要如实标出
+      else badIds[v.rule.id] = true;
     });
     rules.forEach(function (r) {
       const item = document.createElement('div');
       const bad = !!badIds[r.id];
-      item.className = 'rule-mini ' + (bad ? 'bad' : 'ok');
+      const softOnly = !bad && !!softIds[r.id];
+      item.className = 'rule-mini ' + (bad ? 'bad' : softOnly ? 'soft' : 'ok');
       item.innerHTML =
-        '<span class="st">' + (bad ? '✗' : '✓') + '</span>' +
-        '<span>' + esc(global.Seat.Rules.describeRule(r, students, layout)) +
-          (r.hard ? ' <b>🔒</b>' : '') + '</span>' +
+        '<span class="st">' + (bad ? '✗' : softOnly ? '~' : '✓') + '</span>' +
+        '<span>' + esc(global.Seat.Rules.describeRule(r, students, layout, groups)) +
+          (r.hard ? ' <b>🔒</b>' : '') + (softOnly ? ' <i>（尽量项未达成）</i>' : '') + '</span>' +
         '<span class="rw">' + (r.hard ? '硬' : '权' + r.weight) + '</span>';
       container.appendChild(item);
     });

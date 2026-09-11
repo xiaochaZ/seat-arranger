@@ -75,6 +75,14 @@
     return allSeats(layout).filter(function (k) { return layout.unavailable.indexOf(k) < 0; });
   }
 
+  /** 单个座位是否可用（在布局范围内且未被标记不可用） */
+  function isSeatAvailable(layout, key) {
+    const p = parseSeatKey(key);
+    if (!p || !layout) return false;
+    if (p.row < 1 || p.row > layout.rows || p.col < 1 || p.col > layout.cols) return false;
+    return (layout.unavailable || []).indexOf(key) < 0;
+  }
+
   /** 桌号：组内按两列一桌编号，桌号全局递增（如 xx|xx|xx|xx → 桌1/2/3/4） */
   function deskNo(layout, row, col) {
     const groups = columnGroups(layout);
@@ -213,7 +221,7 @@
   global.Seat = global.Seat || {};
   global.Seat.Layout = {
     ZONE_COLORS, defaultLayout, normalizeAisles, columnGroups, groupIndexOf,
-    seatKey, parseSeatKey, allSeats, availableSeats,
+    seatKey, parseSeatKey, allSeats, availableSeats, isSeatAvailable,
     deskNo, sameDesk, sameDeskN, seatDistance, manhattanDistance, gridColIndex, gridAisleIndex, displayCol,
     areaOfSeat, areaIndexOfSeat, seatLabel,
     addArea, renameArea, removeArea, findArea, toggleAreaSeat, canGenerate

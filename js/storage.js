@@ -30,6 +30,7 @@
     return {
       layout: defaultLayout(),
       rules: [],
+      groups: [],             // 学生小组 [{id, name, memberIds:[学生id]}]
       solutions: [],          // [{id, name, createdAt, assignment, totalCost}]
       currentSolutionId: null
     };
@@ -86,6 +87,25 @@
     });
   }
 
+  /** 迁移旧版班级数据：补 groups 字段，并清理指向已删除学生的组员 */
+  function migrateClassData(d, cls) {
+    if (!d) return;
+    if (!Array.isArray(d.groups)) d.groups = [];
+    const valid = {};
+    ((cls && cls.students) || []).forEach(function (s) { valid[s.id] = true; });
+    d.groups.forEach(function (g) {
+      if (!Array.isArray(g.memberIds)) g.memberIds = [];
+      g.memberIds = g.memberIds.filter(function (id) { return valid[id]; });
+    });
+    d.groups = d.groups.filter(function (g) { return g.memberIds.length > 0; });
+    // 引用已消失小组的规则视为失效，一并移除
+    if (Array.isArray(d.rules)) {
+      d.rules = d.rules.filter(function (r) {
+        return !(r && r.type === 'group' && !d.groups.some(function (g) { return g.id === r.groupId; }));
+      });
+    }
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -99,6 +119,7 @@
         const d = parsed.data[cid];
         if (d && d.layout) migrateLayout(d.layout);
         if (d) migrateRules(d);
+        migrateClassData(d, parsed.classes.find(function (c) { return c.id === cid; }));
       });
       if (!parsed.currentClassId || !parsed.data[parsed.currentClassId]) parsed.currentClassId = null;
       return parsed;
@@ -165,6 +186,12 @@
           parsed.data = parsed.data || {};
           parsed.classes.forEach(function (c) {
             if (!parsed.data[c.id]) parsed.data[c.id] = defaultClassData();
+          });
+          Object.keys(parsed.data).forEach(function (cid) {
+            const d = parsed.data[cid];
+            if (d && d.layout) migrateLayout(d.layout);
+            if (d) migrateRules(d);
+            migrateClassData(d, parsed.classes.find(function (c) { return c.id === cid; }));
           });
           if (!parsed.currentClassId || !parsed.data[parsed.currentClassId]) {
             parsed.currentClassId = parsed.classes.length ? parsed.classes[0].id : null;

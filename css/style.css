@@ -107,9 +107,31 @@ input[type="range"] { accent-color: var(--primary); }
 .roster-table td { padding: 6px 12px; border-bottom: 1px solid #f1f5f9; }
 .roster-table tr:hover td { background: #f8fafc; }
 .roster-table .col-op { width: 90px; text-align: right; }
+.roster-table .col-pick { width: 34px; text-align: center; }
+.roster-table .col-pick input { width: auto; min-width: 0; padding: 0; accent-color: var(--primary); }
+.roster-table tr.picked td { background: #eff6ff; }
+.roster-table tr.picked:hover td { background: #e0edff; }
 .roster-table input {
   border: 1px solid transparent; background: transparent; padding: 4px 8px; width: 100%; min-width: 60px;
 }
+
+/* ── 学生小组工具条（名单页） ── */
+.group-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 8px 14px; box-shadow: var(--shadow); margin-bottom: 12px;
+}
+.group-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.group-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); background: #fff; border-radius: 999px;
+  padding: 4px 10px; font-size: 12.5px; cursor: pointer;
+}
+.group-chip:hover { border-color: var(--primary); }
+.group-chip.active { border-color: var(--primary); background: #eff6ff; color: var(--primary-dark); font-weight: 700; }
+.group-chip .del { color: #cbd5e1; }
+.group-chip .del:hover { color: var(--danger); }
+.tool-hint.editing { color: var(--primary-dark); font-weight: 600; }
 .roster-table input:hover { border-color: var(--border); background: #fff; }
 .roster-table input:focus { border-color: var(--primary); background: #fff; }
 .icon-btn {
@@ -195,6 +217,17 @@ input[type="range"] { accent-color: var(--primary); }
   font-size: 9.5px; font-weight: 700; opacity: .8; letter-spacing: 1px;
 }
 .seat.violate { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(220,38,38,.25); }
+/* 固定座位（硬锁定）：金色虚线边框 + 🔒 角标；锁定的学生不可拖动 */
+.seat.locked { border-style: dashed; border-color: #d97706; cursor: not-allowed; }
+.seat.locked:hover { transform: none; box-shadow: none; border-color: #d97706; }
+.seat .lock-tag {
+  position: absolute; right: 3px; bottom: 2px; font-size: 11px; line-height: 1;
+}
+.seat .group-tag {
+  position: absolute; left: 3px; bottom: 2px;
+  font-size: 9.5px; font-weight: 700; color: #fff; background: #7c3aed;
+  border-radius: 4px; padding: 0 3px; line-height: 1.4;
+}
 .seat .badge {
   position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px; padding: 0 4px;
   background: var(--danger); color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700;
@@ -244,6 +277,7 @@ input[type="range"] { accent-color: var(--primary); }
 }
 .rule-type { font-size: 11px; font-weight: 700; color: #fff; padding: 3px 8px; border-radius: 999px; flex-shrink: 0; }
 .rule-type.t-pair { background: #059669; } .rule-type.t-separate { background: #d97706; }
+.rule-type.t-group { background: #7c3aed; } .rule-type.t-fixed { background: #0891b2; }
 .rule-type.t-area { background: #2563eb; } .rule-type.t-ban { background: #dc2626; }
 .rule-desc { flex: 1; min-width: 220px; font-size: 13.5px; }
 .rule-desc .hard-tag { color: var(--danger); font-weight: 700; margin-left: 6px; }
@@ -281,6 +315,8 @@ input[type="range"] { accent-color: var(--primary); }
 .rule-mini.ok .st { color: #16a34a; }
 .rule-mini.bad { background: #fef2f2; color: #7f1d1d; }
 .rule-mini.bad .st { color: #dc2626; }
+.rule-mini.soft { background: #fffbeb; color: #92400e; }
+.rule-mini.soft .st { color: #d97706; }
 .rule-mini .rw { margin-left: auto; flex-shrink: 0; color: #94a3b8; font-size: 11px; }
 .result-rules .empty-tip { color: var(--muted); font-size: 12px; padding: 4px 2px; }
 .solution-list { display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 220px); overflow-y: auto; }
@@ -309,7 +345,11 @@ input[type="range"] { accent-color: var(--primary); }
   font-size: 12.5px; background: var(--danger-bg); color: #7f1d1d; margin-bottom: 6px; cursor: pointer;
 }
 .vio-item:hover { outline: 1px solid var(--danger); }
+/* 「尽量」类提示（如小组聚块不够紧凑）：不算硬失败，用灰色区分 */
+.vio-item.soft { background: #f8fafc; color: #475569; }
+.vio-item.soft:hover { outline: 1px solid #94a3b8; }
 .vio-item .vio-w { font-weight: 700; flex-shrink: 0; }
+.vio-item.soft .vio-w { color: #d97706; }
 .vio-ok {
   text-align: center; color: var(--ok); padding: 16px 0; font-size: 13px;
 }

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * bench.js — 性能压测：50 人 + 混合规则 + 10 套方案（模拟真实使用场景）
  * 运行：node test/bench.js
  */
@@ -7,6 +7,7 @@ const JS_DIR = path.join(__dirname, '..', 'js');
 require(path.join(JS_DIR, 'storage.js'));
 require(path.join(JS_DIR, 'layout.js'));
 require(path.join(JS_DIR, 'roster.js'));
+require(path.join(JS_DIR, 'groups.js'));
 require(path.join(JS_DIR, 'rules.js'));
 require(path.join(JS_DIR, 'cost.js'));
 require(path.join(JS_DIR, 'anneal.js'));
@@ -47,18 +48,25 @@ for (let i = 0; i < 3; i++) {
 rules.push({ id: 'r_ban1', type: 'ban', aId: 's40', seat: 'r7c8', weight: 80, hard: false });
 rules.push({ id: 'r_ban2', type: 'ban', aId: 's41', areaId: 'a1', weight: 80, hard: false });
 
+// 新增能力：小组保持距离（5 人两两距离）+ 固定座位（1 硬 1 软）
+const groups = [{ id: 'g1', name: '第一组', memberIds: ['s42', 's43', 's44', 's45', 's46'] }];
+rules.push({ id: 'r_group1', type: 'group', groupId: 'g1', mode: 'manhattan', minDist: 3, weight: 75, hard: false });
+rules.push({ id: 'r_fix1', type: 'fixed', aId: 's47', seat: 'r7c1', weight: 90, hard: true });
+rules.push({ id: 'r_fix2', type: 'fixed', aId: 's48', seat: 'r1c1', weight: 60, hard: false });
+
 // 检查硬约束可满足性
-const ctx = { layout, students };
+const ctx = { layout, students, groups };
 const evalInit = S.Cost.evaluate({}, rules, ctx);
 console.log('规则数:', rules.length, '| 学生:', students.length, '| 座位:', S.Layout.availableSeats(layout).length);
 
 const t0 = Date.now();
-const sols = S.Anneal.generateMany(students, layout, rules, 10);
+const sols = S.Anneal.generateMany(students, layout, rules, 10, null, groups);
 const t1 = Date.now();
 
 console.log('生成 10 套耗时:', (t1 - t0) + 'ms');
 console.log('方案代价:', sols.map(s => s.totalCost).join(', '));
 console.log('硬约束失败:', sols.filter(s => s.hardFailed).length, '套');
+console.log('硬锁定座位 r7c1 =', sols[0].assignment['r7c1'], '(应为 s47)');
 
 const best = sols[0];
 console.log('\n最优方案违规明细:');

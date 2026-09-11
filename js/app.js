@@ -22,7 +22,7 @@
   }
 
   let state = null;
-  const ui = { step: 1, selectedAreaId: null, genTimer: null };
+  const ui = { step: 1, selectedAreaId: null, genTimer: null, picked: {}, editingGroupId: null };
 
   /* ─────────── 工具 ─────────── */
 
@@ -74,8 +74,22 @@
   }
 
   function saveAndRender() {
+    refreshSolutionCosts();
     S().Storage.save(state);
     renderAll();
+  }
+
+  /** 规则/小组变动后，按当前规则重算已生成方案的代价与硬失败标记（方案列表数字才不会过期） */
+  function refreshSolutionCosts() {
+    const d = S().Storage.currentData(state);
+    const cls = S().Storage.currentClass(state);
+    if (!d || !cls || !d.solutions.length) return;
+    const ctx = { layout: d.layout, students: cls.students, groups: d.groups || [] };
+    d.solutions.forEach(function (sol) {
+      const ev = S().Cost.evaluate(sol.assignment, d.rules, ctx);
+      sol.totalCost = ev.totalCost;
+      sol.hardFailed = ev.hardFailed;
+    });
   }
 
   /* ─────────── 班级 ─────────── */
@@ -97,6 +111,8 @@
       const cls = S().Storage.addClass(state, name);
       S().Storage.save(state);
       ui.selectedAreaId = null;
+      ui.picked = {};
+      ui.editingGroupId = null;
       renderAll();
       toast('已创建班级「' + cls.name + '」', 'ok');
     });
@@ -106,12 +122,157 @@
 
   function renderRosterArea() {
     const body = $('rosterBody');
-    const n = S().Render.renderRoster(state, body);
+    const n = S().Render.renderRoster(state, body, ui.picked);
     $('rosterStats').textContent = state.currentClassId
       ? '共 ' + n + ' 名学生（可用座位 ' + S().Layout.availableSeats((S().Storage.currentData(state) || {}).layout || S().Layout.defaultLayout()).length + ' 个）'
       : '请先新建或选择班级';
     $('rosterEmpty').classList.toggle('hidden', n > 0);
     $('rosterTableWrap').classList.toggle('hidden', n === 0);
+    const all = $('rosterPickAll');
+    if (all) {
+      const picked = pickedIds().length;
+      all.checked = n > 0 && picked === n;
+      all.indeterminate = picked > 0 && picked < n;
+    }
+    renderGroupBar();
+  }
+
+  /* ── 学生小组（勾选名单 → 建组；规则里可引用小组） ── */
+
+  function pickedIds() {
+    const ids = [];
+    S().Roster.students(state).forEach(function (s) { if (ui.picked[s.id]) ids.push(s.id); });
+    return ids;
+  }
+
+  function renderGroupBar() {
+    const bar = $('groupBar');
+    if (!bar) return;
+    const d = S().Storage.currentData(state);
+    if (!d) { bar.innerHTML = ''; return; }
+    if (!Array.isArray(d.groups)) d.groups = [];
+    const editing = S().Groups.find(d.groups, ui.editingGroupId);
+    const nPicked = pickedIds().length;
+    const chips = d.groups.length
+      ? d.groups.map(function (g) {
+        const n = S().Groups.membersOf(g).length;
+        const refs = S().Groups.ruleRefCount(state, g.id);
+        const act = g.id === ui.editingGroupId ? ' active' : '';
+        return '<span class="group-chip' + act + '" data-group="' + g.id + '" title="点击编辑成员' +
+          (refs ? '（被 ' + refs + ' 条规则引用）' : '') + '">' +
+          S().Render.esc(g.name) + ' · ' + n + ' 人' +
+          '<span class="del" data-groupdel="' + g.id + '" title="删除小组">✕</span></span>';
+      }).join('')
+      : '<span class="muted">还没有小组。勾选左侧复选框后点「＋ 建小组」。</span>';
+    const hint = editing
+      ? '<span class="tool-hint editing">正在编辑「' + S().Render.esc(editing.name) + '」：勾选/取消勾选即时保存成员</span>'
+      : '<span class="tool-hint">勾选学生 → 建小组；小组可在「③ 规则」里用作「小组」</span>';
+    bar.innerHTML =
+      '<span class="tool-label">学生小组：</span>' +
+      '<span class="group-chips">' + chips + '</span>' +
+      (editing
+        ? '<button id="btnRenameGroup" class="btn btn-sm">✏️ 重命名</button>' +
+          '<button id="btnExitGroupEdit" class="btn btn-sm btn-primary">✅ 完成编辑</button>'
+        : '<button id="btnNewGroup" class="btn btn-sm"' + (nPicked ? '' : ' disabled') + '>＋ 用勾选的 ' + nPicked + ' 人建小组</button>') +
+      hint;
+  }
+
+  /** 小组成员变化后：重算方案代价并刷新受影响的区块（名单表本身由调用方重绘，避免打断勾选） */
+  function afterGroupChange() {
+    refreshSolutionCosts();
+    S().Storage.save(state);
+    renderRuleArea();
+    renderResultArea();
+  }
+
+  function togglePick(id, checked) {
+    if (checked) ui.picked[id] = true;
+    else delete ui.picked[id];
+    // 编辑态下勾选即改成员
+    if (ui.editingGroupId) {
+      const d = S().Storage.currentData(state);
+      const g = d && S().Groups.find(d.groups, ui.editingGroupId);
+      if (g) {
+        const ids = S().Groups.membersOf(g).filter(function (x) { return x !== id; });
+        if (checked) ids.push(id);
+        S().Groups.setMembers(d.groups, g.id, ids);
+        afterGroupChange();
+      }
+    }
+    renderRosterArea();
+  }
+
+  function setAllPicked(checked) {
+    ui.picked = {};
+    if (checked) S().Roster.students(state).forEach(function (s) { ui.picked[s.id] = true; });
+    if (ui.editingGroupId) {
+      const d = S().Storage.currentData(state);
+      if (d && S().Groups.find(d.groups, ui.editingGroupId)) {
+        S().Groups.setMembers(d.groups, ui.editingGroupId, pickedIds());
+        afterGroupChange();
+      }
+    }
+    renderRosterArea();
+  }
+
+  function newGroupFromPicked() {
+    const ids = pickedIds();
+    if (!ids.length) { toast('请先勾选学生', 'err'); return; }
+    const d = S().Storage.currentData(state);
+    if (!d) return;
+    const base = S().Groups.uniqueName(d.groups, '小组' + (d.groups.length + 1));
+    inputModal('新建学生小组', '小组名称（如：第一组、需要分开的 8 人）', function (name) {
+      const g = S().Groups.add(state, name, ids);
+      ui.editingGroupId = g.id;
+      saveAndRender();
+      toast('已创建小组「' + g.name + '」（' + ids.length + ' 人）', 'ok');
+    });
+    const el = $('inputModalVal');
+    if (el) el.value = base;
+  }
+
+  function renameGroup(id) {
+    const d = S().Storage.currentData(state);
+    const g = d && S().Groups.find(d.groups, id);
+    if (!g) return;
+    inputModal('重命名小组', '小组名称', function (name) {
+      S().Groups.rename(d.groups, id, name);
+      saveAndRender();
+    });
+    const el = $('inputModalVal');
+    if (el) el.value = g.name;
+  }
+
+  function delGroup(id) {
+    const d = S().Storage.currentData(state);
+    const g = d && S().Groups.find(d.groups, id);
+    if (!g) return;
+    const refs = S().Groups.ruleRefCount(state, id);
+    confirmModal('删除小组「' + g.name + '」？' +
+      (refs ? '<br><span class="muted">有 ' + refs + ' 条规则引用它，将一并删除。</span>' : ''), function () {
+      const removed = S().Groups.removeWithRules(state, id);
+      if (ui.editingGroupId === id) { ui.editingGroupId = null; ui.picked = {}; }
+      saveAndRender();
+      toast('小组已删除' + (removed ? '，同时移除 ' + removed + ' 条相关规则' : ''), 'ok');
+    });
+  }
+
+  function editGroup(id) {
+    const d = S().Storage.currentData(state);
+    const g = d && S().Groups.find(d.groups, id);
+    if (!g) return;
+    ui.editingGroupId = id;
+    ui.picked = {};
+    S().Groups.membersOf(g).forEach(function (sid) { ui.picked[sid] = true; });
+    renderRosterArea();
+  }
+
+  function exitGroupEdit() {
+    ui.editingGroupId = null;
+    ui.picked = {};
+    renderRosterArea();
+    renderRuleArea();
+    toast('小组编辑已完成', 'ok');
   }
 
   function openAddStudentModal() {
@@ -157,6 +318,8 @@
       S().Storage.importJSON(file).then(function (newState) {
         state = newState;
         ui.selectedAreaId = null;
+        ui.picked = {};
+        ui.editingGroupId = null;
         S().Storage.save(state);
         renderAll();
         toast('备份已恢复：' + state.classes.length + ' 个班级' + (state.currentClassId ? '，当前「' + (S().Storage.currentClass(state) || {}).name + '」' : ''), 'ok');
@@ -303,9 +466,17 @@
     if (!students.length) { toast('请先添加学生', 'err'); return; }
     const r = existing || S().Rules.defaultRule('pair');
     const areas = d.layout.areas;
+    const groups = d.groups || [];
     const areaOpts = areas.length
       ? areas.map(function (a) { return '<option value="' + a.id + '"' + (r.areaId === a.id ? ' selected' : '') + '>' + S().Render.esc(a.name) + '</option>'; }).join('')
       : '<option value="">（暂无区域，请先到「布局」页新建）</option>';
+    const groupOpts = groups.length
+      ? groups.map(function (g) {
+        const n = S().Groups.membersOf(g).length;
+        return '<option value="' + g.id + '"' + (r.groupId === g.id ? ' selected' : '') + (n < 2 ? ' disabled' : '') + '>' +
+          S().Render.esc(g.name) + '（' + n + ' 人）' + (n < 2 ? ' — 成员不足' : '') + '</option>';
+      }).join('')
+      : '<option value="">（暂无小组，请先到「名单」页勾选学生后建组）</option>';
     const stuOpts = function (sel) {
       return '<option value="">— 请选择 —</option>' + students.map(function (s) {
         return '<option value="' + s.id + '"' + (sel === s.id ? ' selected' : '') + '>' + S().Render.esc(s.name) + '</option>';
@@ -320,28 +491,43 @@
       '<select id="r_type">' +
       '<option value="pair"' + (r.type === 'pair' ? ' selected' : '') + '>同桌：2~3 人连排同桌</option>' +
       '<option value="separate"' + (r.type === 'separate' ? ' selected' : '') + '>隔离：两人必须远离</option>' +
+      '<option value="group"' + (r.type === 'group' ? ' selected' : '') + '>小组：组内保持距离 / 聚在一起</option>' +
+      '<option value="fixed"' + (r.type === 'fixed' ? ' selected' : '') + '>固定座位：某人锁定在某座位</option>' +
       '<option value="area"' + (r.type === 'area' ? ' selected' : '') + '>区域：某人必须坐在某区域</option>' +
       '<option value="ban"' + (r.type === 'ban' ? ' selected' : '') + '>禁坐：某人禁止坐在某处</option>' +
       '</select></div>' +
-      '<div class="form-row"><label id="lb_a">学生 A</label><select id="r_a">' + stuOpts(r.aId) + '</select></div>' +
+      '<div class="form-row only-pair only-separate only-area only-ban only-fixed"><label id="lb_a">学生 A</label><select id="r_a">' + stuOpts(r.aId) + '</select></div>' +
       '<div class="form-row only-pair only-separate"><label>学生 B</label><select id="r_b">' + stuOpts(r.bId) + '</select></div>' +
       '<div class="form-row only-pair"><label>第三人（可选，3 人连排同桌）</label><select id="r_c">' + stuOpts(r.cId) + '</select>' +
       '<div class="hint">3 人同桌需要布局中有 ≥3 列的组（如 xx|xxx|xx 设过道为 2,5,7）；否则无法满足</div></div>' +
-      '<div class="form-row only-separate"><label>远离程度</label>' +
+      '<div class="form-row only-separate only-group"><label>关系</label>' +
       '<select id="r_mode">' +
-      '<option value="desk"' + (r.mode === 'desk' ? ' selected' : '') + '>不能同桌</option>' +
-      '<option value="manhattan"' + ((r.mode === 'manhattan' || r.mode === 'distance') ? ' selected' : '') + '>按距离：曼哈顿距离至少 N 格</option>' +
-      '<option value="hv"' + (r.mode === 'hv' ? ' selected' : '') + '>按距离：横向、竖向分别至少 N 列/排</option>' +
+      '<option value="desk"' + (r.mode === 'desk' ? ' selected' : '') + '>保持距离：不能同桌</option>' +
+      '<option value="manhattan"' + ((r.mode === 'manhattan' || r.mode === 'distance') ? ' selected' : '') + '>保持距离：曼哈顿距离至少 N 格</option>' +
+      '<option value="hv"' + (r.mode === 'hv' ? ' selected' : '') + '>保持距离：周围范围（前后 N 排、左右 N 座内避开）</option>' +
+      '<option value="block"' + (r.mode === 'block' ? ' selected' : '') + '>聚在一起：组员两两同桌、座位拼成矩形、整组同一区域</option>' +
       '</select></div>' +
-      '<div class="form-row only-separate" id="distRow" ' + ((r.mode === 'manhattan' || r.mode === 'distance') ? '' : 'style="display:none"') + '>' +
+      '<div class="form-row only-separate only-group" id="distRow" ' + ((r.mode === 'manhattan' || r.mode === 'distance') ? '' : 'style="display:none"') + '>' +
       '<label>最小距离（格）</label>' +
       '<input type="number" id="r_minDist" min="0" max="24" style="width:80px" value="' + (r.minDist != null ? r.minDist : ((r.minRows || 0) + (r.minCols || 0))) + '">' +
       '<div class="hint">曼哈顿距离 = 行差 + 列差（过道占一格）。如"相距至少 3 格"：同行隔 3 列、或隔 1 排 2 列等</div></div>' +
-      '<div class="form-row only-separate" id="hvRow" ' + (r.mode === 'hv' ? '' : 'style="display:none"') + '>' +
-      '<label>最小距离</label>' +
-      '竖向至少隔 <input type="number" id="r_minRows" min="0" max="12" style="width:64px" value="' + (r.minRows || 0) + '"> 排，' +
-      '横向至少隔 <input type="number" id="r_minCols" min="0" max="15" style="width:64px" value="' + (r.minCols || 0) + '"> 列' +
-      '<div class="hint">两个方向都要满足才算达标；填 0 表示该方向不限。如"竖向至少隔 2 排"则竖向=2、横向=0</div></div>' +
+      '<div class="form-row only-separate only-group" id="hvRow" ' + (r.mode === 'hv' ? '' : 'style="display:none"') + '>' +
+      '<label>周围范围</label>' +
+      '对方前后 <input type="number" id="r_minRows" min="0" max="12" style="width:64px" value="' + (r.minRows || 0) + '"> 排内、' +
+      '左右 <input type="number" id="r_minCols" min="0" max="15" style="width:64px" value="' + (r.minCols || 0) + '"> 座内都不能坐' +
+      '<div class="hint">禁坐区＝以对方为中心 <b>前后 N 排 × 左右 M 座</b> 的矩形（<b>同桌也会被判违规</b>）：<br>' +
+      '· 前后 <b>1</b> / 左右 <b>1</b> → 对方周围 3×3 的<b>八个邻座</b>都不能坐；<br>' +
+      '· 前后 <b>0</b> / 左右 <b>1</b> → 只看同一排的<b>左右各 1 座</b>，前后不限；<br>' +
+      '· 前后 <b>2</b> / 左右 <b>0</b> → 只看同一列的<b>前后各 2 排</b>；<br>' +
+      '· 填 <b>0</b> 表示该方向只看"正同一排/列"，两个都填 0 则无实际约束</div></div>' +
+      '<div class="form-row only-group"><label>学生小组</label><select id="r_group">' + groupOpts + '</select>' +
+      '<div class="hint">小组在「① 名单」页勾选学生后创建；成员随时可改，规则自动跟随</div></div>' +
+      '<div class="form-row only-group" id="blockRow" ' + (r.mode === 'block' ? '' : 'style="display:none"') + '>' +
+      '<label>聚到区域（可选）</label>' +
+      '<select id="r_blockArea"><option value="">（任意：全组落在同一区域即可）</option>' + areaOpts + '</select>' +
+      '<div class="hint">区域在「② 布局」页框选；布局里没有区域时"同一区域"这一项自动跳过。判定标准：组员两两同桌（奇数人可落单 1 人）＋ 座位包围盒尽量填满（越紧凑越接近矩形）</div></div>' +
+      '<div class="form-row only-fixed"><label>锁定座位</label><select id="r_fixSeat"><option value="">— 选择座位 —</option>' + seatOpts + '</select>' +
+      '<div class="hint">勾选下方「硬约束」时：生成会先把这个学生预置到该座位，且拖拽也移不动他；布局改动导致该座位不可用时锁定自动暂停</div></div>' +
       '<div class="form-row only-area"><label>目标区域</label><select id="r_area">' + areaOpts + '</select>' +
       '<div class="hint">区域需先在「布局」页框选</div></div>' +
       '<div class="form-row only-ban"><label>禁坐范围</label>' +
@@ -363,20 +549,29 @@
 
     // 类型切换显隐
     const typeSel = body.querySelector('#r_type');
+    const modeSel = body.querySelector('#r_mode');
+    /** 关系模式的二级显隐（距离/双阈值/聚块三选一；非 separate/group 类型下全隐藏） */
+    const applyModeUI = function () {
+      const t = typeSel.value, v = modeSel.value;
+      const relevant = (t === 'separate' || t === 'group');
+      body.querySelector('#distRow').style.display = relevant && (v === 'manhattan' || v === 'distance') ? '' : 'none';
+      body.querySelector('#hvRow').style.display = relevant && v === 'hv' ? '' : 'none';
+      body.querySelector('#blockRow').style.display = relevant && v === 'block' ? '' : 'none';
+    };
     const applyTypeUI = function () {
       const t = typeSel.value;
-      body.querySelectorAll('.only-pair,.only-separate,.only-area,.only-ban').forEach(function (el) {
+      body.querySelectorAll('.only-pair,.only-separate,.only-group,.only-area,.only-ban,.only-fixed').forEach(function (el) {
         el.style.display = el.classList.contains('only-' + t) ? '' : 'none';
       });
-      body.querySelector('#lb_a').textContent = t === 'area' ? '学生（必须坐进区域）' : '学生 A';
+      body.querySelector('#lb_a').textContent =
+        t === 'area' ? '学生（必须坐进区域）' : t === 'fixed' ? '学生（要锁定的学生）' : '学生 A';
+      // 固定座位默认按硬约束处理（需要时老师可手动取消）
+      if (t === 'fixed' && !existing) body.querySelector('#r_hard').checked = true;
+      applyModeUI();
     };
     typeSel.onchange = applyTypeUI;
     applyTypeUI();
-    body.querySelector('#r_mode').onchange = function () {
-      const v = this.value;
-      body.querySelector('#distRow').style.display = (v === 'manhattan' || v === 'distance') ? '' : 'none';
-      body.querySelector('#hvRow').style.display = v === 'hv' ? '' : 'none';
-    };
+    modeSel.onchange = applyModeUI;
     body.querySelector('#r_banType').onchange = function () {
       body.querySelector('#banAreaRow').style.display = this.value === 'area' ? '' : 'none';
       body.querySelector('#banSeatRow').style.display = this.value === 'seat' ? '' : 'none';
@@ -401,27 +596,74 @@
         rule.minDist = Math.max(0, parseInt(body.querySelector('#r_minDist').value) || 0);
         delete rule.minRows; delete rule.minCols;
       }
-      rule.areaId = body.querySelector('#r_area') ? body.querySelector('#r_area').value || null : rule.areaId;
-      rule.seat = body.querySelector('#r_banSeat') ? body.querySelector('#r_banSeat').value || null : rule.seat;
+      // 各类型专属字段：清掉不属于当前类型的残留值，避免编辑类型后留下脏数据
+      rule.groupId = t === 'group' ? (body.querySelector('#r_group').value || null) : null;
+      if (t === 'group') { rule.aId = null; rule.bId = null; rule.cId = null; }
+      if (t === 'fixed') {
+        rule.seat = body.querySelector('#r_fixSeat').value || null;
+        rule.areaId = null;
+      } else if (t === 'ban') {
+        const bt = body.querySelector('#r_banType').value;
+        rule.areaId = bt === 'area' ? (body.querySelector('#r_banArea').value || null) : null;
+        rule.seat = bt === 'seat' ? (body.querySelector('#r_banSeat').value || null) : null;
+      } else if (t === 'area') {
+        rule.areaId = body.querySelector('#r_area').value || null;
+        rule.seat = null;
+      } else if (t === 'group') {
+        // 「聚在一起」可选指定聚到哪个区域；其余模式不用 areaId
+        rule.areaId = rule.mode === 'block' ? (body.querySelector('#r_blockArea').value || null) : null;
+        rule.seat = null;
+      } else {
+        rule.areaId = null;
+        rule.seat = null;
+      }
       rule.weight = parseInt(body.querySelector('#r_weight').value) || 0;
       rule.hard = body.querySelector('#r_hard').checked;
 
       // 校验
-      if (!rule.aId) { toast('请选择学生', 'err'); return; }
+      if (t !== 'group' && !rule.aId) { toast('请选择学生', 'err'); return; }
       if ((t === 'pair' || t === 'separate') && (!rule.bId || rule.bId === rule.aId)) { toast('请选择另一位学生', 'err'); return; }
       if (t === 'pair' && rule.cId) {
         if (rule.cId === rule.aId || rule.cId === rule.bId) { toast('第三人不能与 A/B 重复', 'err'); return; }
-        const groups = S().Layout.columnGroups((S().Storage.currentData(state) || {}).layout || { rows: 6, cols: 8 });
-        const maxW = Math.max.apply(null, groups.map(function (g) { return g[1] - g[0] + 1; }));
+        const groups2 = S().Layout.columnGroups((S().Storage.currentData(state) || {}).layout || { rows: 6, cols: 8 });
+        const maxW = Math.max.apply(null, groups2.map(function (g) { return g[1] - g[0] + 1; }));
         if (maxW < 3) toast('提示：当前布局各组最多 ' + maxW + ' 列，3 人同桌可能无法满足，建议过道改为含 3 列的组（如 2,5,7）', 'err');
+      }
+      if (t === 'group') {
+        if (!rule.groupId) { toast('请选择学生小组（需先在「① 名单」页勾选学生建组）', 'err'); return; }
+        const g = S().Groups.find(groups, rule.groupId);
+        if (!g || S().Groups.membersOf(g).length < 2) { toast('该小组成员不足 2 人，无法设置组内关系', 'err'); return; }
+        if (rule.mode === 'block') {
+          const need = S().Groups.membersOf(g).length;
+          const area = rule.areaId ? S().Layout.findArea(d.layout, rule.areaId) : null;
+          if (area && area.seats.length < need) {
+            toast('区域「' + area.name + '」只有 ' + area.seats.length + ' 个座位，装不下 ' + need + ' 人', 'err');
+            return;
+          }
+          if (need > S().Layout.availableSeats(d.layout).length) {
+            toast('可用座位不足，装不下 ' + need + ' 人', 'err');
+            return;
+          }
+        }
+      }
+      if (t === 'fixed') {
+        if (!rule.seat) { toast('请选择要锁定的座位', 'err'); return; }
+        if (!S().Layout.isSeatAvailable(d.layout, rule.seat)) { toast('该座位当前不可用，请换一个座位', 'err'); return; }
+        const clash = S().Rules.rulesOf(state).filter(function (x) {
+          return x.id !== rule.id && x.type === 'fixed' && x.hard && rule.hard &&
+            (x.aId === rule.aId || x.seat === rule.seat);
+        })[0];
+        if (clash) {
+          toast('与已有固定座位规则冲突：' + S().Rules.describeRule(clash, students, d.layout, groups) +
+            '（同一个学生或同一个座位只能硬锁定一次）', 'err');
+          return;
+        }
       }
       if (t === 'area' && !rule.areaId) { toast('请选择目标区域（需先在布局页创建区域）', 'err'); return; }
       if (t === 'ban') {
         const bt = body.querySelector('#r_banType').value;
         if (bt === 'seat' && !rule.seat) { toast('请选择禁坐座位', 'err'); return; }
-        if (bt === 'area' && !(body.querySelector('#r_banArea').value)) { toast('请选择禁坐区域', 'err'); return; }
-        rule.areaId = bt === 'area' ? body.querySelector('#r_banArea').value : null;
-        rule.seat = bt === 'seat' ? rule.seat : null;
+        if (bt === 'area' && !rule.areaId) { toast('请选择禁坐区域', 'err'); return; }
       }
 
       if (existing) S().Rules.updateRule(state, existing.id, rule);
@@ -458,23 +700,34 @@
     const students = cls.students;
     const cap = S().Layout.canGenerate(d.layout, students.length);
     if (!cap.ok) { toast('可用座位不足：需要 ' + cap.need + ' 个，当前只有 ' + cap.avail + ' 个。请到「布局」页调整', 'err'); return; }
-    // 过滤引用已删除学生的规则
+    // 过滤引用已删除学生的规则、以及引用了已消失小组的小组规则
     const validIds = {};
     students.forEach(function (s) { validIds[s.id] = true; });
     const badRules = d.rules.filter(function (r) {
+      if (r.type === 'group') {
+        const g = S().Groups.find(d.groups, r.groupId);
+        return !g || S().Groups.membersOf(g).length < 2;
+      }
       return (r.aId && !validIds[r.aId]) || (r.bId && !validIds[r.bId]) || (r.cId && !validIds[r.cId]);
     });
     if (badRules.length) {
       d.rules = d.rules.filter(function (r) { return badRules.indexOf(r) < 0; });
       S().Storage.save(state);
-      toast('已自动移除 ' + badRules.length + ' 条引用已删除学生的规则', 'err');
+      toast('已自动移除 ' + badRules.length + ' 条失效规则（引用了已删除的学生或小组）', 'err');
     }
+    // 固定座位的座位若已不可用（布局改动/标记不可用），生成结果里一并提示"已暂停"
+    const pausedPins = d.rules.filter(function (r) {
+      return r.type === 'fixed' && r.seat && !S().Layout.isSeatAvailable(d.layout, r.seat);
+    });
+    const pinWarn = pausedPins.length
+      ? '；有 ' + pausedPins.length + ' 条固定座位规则因座位不可用已暂停'
+      : '';
     const count = Math.max(1, Math.min(20, parseInt($('genCount').value) || 10));
     showGenOverlay();
     setTimeout(function () {
       let solutions;
       try {
-        solutions = S().Anneal.generateMany(students, d.layout, d.rules, count);
+        solutions = S().Anneal.generateMany(students, d.layout, d.rules, count, null, d.groups || []);
       } catch (e) {
         console.error(e);
         hideGenOverlay();
@@ -487,7 +740,7 @@
       hideGenOverlay();
       renderAll();
       const hard = solutions.filter(function (s) { return s.hardFailed; }).length;
-      toast('已生成 ' + solutions.length + ' 套方案' + (hard ? '，其中 ' + hard + ' 套未满足硬约束' : ''), 'ok');
+      toast('已生成 ' + solutions.length + ' 套方案' + (hard ? '，其中 ' + hard + ' 套未满足硬约束' : '') + pinWarn, hard ? 'err' : 'ok');
     }, 40);
   }
 
@@ -527,10 +780,10 @@
     $('solutionSide').classList.remove('hidden');
     const cur = d.solutions.find(function (s) { return s.id === d.currentSolutionId; });
     if (!cur) { grid.innerHTML = ''; return; }
-    const evalResult = S().Render.renderResultGrid(grid, d.layout, cls.students, cur.assignment, d.rules);
+    const evalResult = S().Render.renderResultGrid(grid, d.layout, cls.students, cur.assignment, d.rules, d.groups || []);
     S().Render.renderViolations(evalResult.violations, $('violationList'), d.layout, cur.assignment);
     S().Render.renderSolutions(state, $('solutionList'), $('solutionInfo'));
-    const ruleCount = S().Render.renderResultRules($('resultRules'), d.rules, cls.students, d.layout, evalResult);
+    const ruleCount = S().Render.renderResultRules($('resultRules'), d.rules, cls.students, d.layout, evalResult, d.groups || []);
     $('resultRuleCount').textContent = ruleCount ? '（' + ruleCount + ' 条）' : '';
   }
 
@@ -569,6 +822,8 @@
     $('classSelect').addEventListener('change', function () {
       state.currentClassId = this.value || null;
       ui.selectedAreaId = null;
+      ui.picked = {};
+      ui.editingGroupId = null;
       saveAndRender();
     });
 
@@ -599,10 +854,12 @@
     $('btnClearRoster').onclick = function () {
       const n = S().Roster.students(state).length;
       if (!n) { toast('名单已经是空的', 'err'); return; }
-      confirmModal('确定清空当前班级的 ' + n + ' 名学生？<br><span class="muted">已生成的方案也会一并清空；引用这些学生的规则将失效。</span>', function () {
+      confirmModal('确定清空当前班级的 ' + n + ' 名学生？<br><span class="muted">已生成的方案、学生小组也会一并清空；引用这些学生的规则将失效。</span>', function () {
         S().Roster.clearStudents(state);
         const d = S().Storage.currentData(state);
-        if (d) { d.solutions = []; d.currentSolutionId = null; }
+        if (d) { d.solutions = []; d.currentSolutionId = null; d.groups = []; }
+        ui.picked = {};
+        ui.editingGroupId = null;
         saveAndRender();
         toast('名单已清空', 'ok');
       });
@@ -616,6 +873,12 @@
       if (!input) return;
       const tr = input.closest('tr');
       if (!tr) return;
+      // 勾选框：用于组建/编辑小组
+      if (input.dataset.pick !== undefined) {
+        togglePick(input.dataset.pick, input.checked);
+        return;
+      }
+      if (input.dataset.f === undefined) return;
       S().Roster.updateStudent(state, tr.dataset.id, { [input.dataset.f]: input.value });
       S().Storage.save(state);
       renderRosterArea();
@@ -625,8 +888,22 @@
       if (!btn) return;
       confirmModal('删除该学生？', function () {
         S().Roster.removeStudent(state, btn.dataset.del);
+        delete ui.picked[btn.dataset.del];
+        S().Groups.cleanup(state);
         saveAndRender();
       });
+    });
+    // 全选/取消全选（用于批量建组）
+    $('rosterPickAll').addEventListener('change', function () { setAllPicked(this.checked); });
+    // 小组工具条（事件委托：chip 选中/删除、建组、重命名、完成编辑）
+    $('groupBar').addEventListener('click', function (e) {
+      const del = e.target.closest('[data-groupdel]');
+      if (del) { e.stopPropagation(); delGroup(del.dataset.groupdel); return; }
+      const chip = e.target.closest('[data-group]');
+      if (chip) { editGroup(chip.dataset.group); return; }
+      if (e.target.closest('#btnNewGroup')) { newGroupFromPicked(); return; }
+      if (e.target.closest('#btnRenameGroup')) { renameGroup(ui.editingGroupId); return; }
+      if (e.target.closest('#btnExitGroupEdit')) { exitGroupEdit(); return; }
     });
 
     // 布局
