@@ -66,7 +66,7 @@
               '，实际竖向隔 ' + d.dr + ' 排、横向隔 ' + d.dc + ' 列'
           };
         }
-        // 曼哈顿距离（含旧 mode='distance' 兼容）
+        // 曼哈顿距离 = |Δ排| + |Δ列|（过道不计入；含旧 mode='distance' 兼容）
         const d = S.Layout.manhattanDistance(layout, ka, kb);
         const need = rule.minDist || 0;
         if (d >= need) return { violated: false, amount: 0, desc: '' };

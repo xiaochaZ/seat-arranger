@@ -25,17 +25,21 @@
   }
 
   /** 渲染讲台 + 网格结构（编辑或结果共用骨架）
-   *  全部显式 grid 定位（讲台第1行、每个过道占独立列轨道、座位从第2行起），
-   *  不依赖 auto-placement，避免过道元素错位/重叠 */
+   *  全部显式 grid 定位（讲台占一行、每个过道占独立列轨道、座位占其余 rows 行），
+   *  不依赖 auto-placement，避免过道元素错位/重叠。
+   *  讲台方位 layout.podiumSide：'top'（默认）= 讲台第 1 行、座位从第 2 行起；
+   *  'bottom' = 讲台占最后一行、座位仍占第 2..rows+1 行，但逻辑排 r1 画在最下面 */
   function renderSeatGrid(el, layout, seatRenderer) {
     const S = global.Seat;
+    const bottom = S.Layout.podiumSide(layout) === 'bottom';
     el.innerHTML = '';
+    el.classList.toggle('podium-bottom', bottom);
     applyGridColumns(el, layout);
     const podium = document.createElement('div');
     podium.className = 'podium';
     podium.textContent = '讲 台';
     podium.style.gridColumn = '1 / -1';
-    podium.style.gridRow = '1';
+    podium.style.gridRow = String(bottom ? layout.rows + 2 : 1);
     el.appendChild(podium);
     // 每个过道一个条带元素，占据对应轨道，从第 2 行跨到最后一行
     (layout.aisles || []).forEach(function (a) {
@@ -49,14 +53,14 @@
       for (let c = 1; c <= layout.cols; c++) {
         const seat = seatRenderer(layout, r, c);
         seat.style.gridColumn = String(S.Layout.gridColIndex(layout, c));
-        seat.style.gridRow = String(r + 1);
+        seat.style.gridRow = String(S.Layout.visualRow(layout, r) + 1);
         el.appendChild(seat);
       }
     }
-    // 门标记：前门 + 后门（都在门那一侧，分别靠近第 1 排和最后一排）
+    // 门标记：前门 + 后门（都在门那一侧）。前门永远靠近讲台/第一排，后门靠近末排
     ['front', 'back'].forEach(function (which) {
       const door = document.createElement('div');
-      door.className = 'door-mark ' + which + ' ' + (layout.doorSide === 'right' ? 'right' : 'left');
+      door.className = 'door-mark ' + which + ' ' + (layout.doorSide === 'right' ? 'right' : 'left') + (bottom ? ' flip' : '');
       door.textContent = which === 'front' ? '前门' : '后门';
       el.appendChild(door);
     });

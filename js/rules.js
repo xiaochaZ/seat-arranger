@@ -4,7 +4,7 @@
  *   { id, type: 'pair'|'separate'|'area'|'ban'|'group'|'fixed',
  *     aId, bId,                 // pair/separate/area/ban/fixed
  *     mode: 'desk'|'manhattan'|'hv',  // separate/group：'desk'=不同桌；'manhattan'=曼哈顿距离至少 N 格；'hv'=横向/竖向分别至少 N 列/排
- *     minDist,                  // separate/group(mode='manhattan')：最小曼哈顿距离（|Δ排|+|Δ列|，含过道）
+ *     minDist,                  // separate/group(mode='manhattan')：最小曼哈顿距离（|Δ排|+|Δ列|，过道不计入）
  *     minRows, minCols,         // separate/group(mode='hv')：竖向至少隔 N 排、横向至少隔 N 列
  *     groupId,                  // group：引用的学生小组（成员在「名单」页维护，规则自动跟随）
  *     areaId,                   // area/ban（区域）

@@ -59,11 +59,12 @@
         <div class="panel-actions layout-params">
           <label>排数 <input type="number" id="layoutRows" min="1" max="12" value="6"></label>
           <label>列数 <input type="number" id="layoutCols" min="2" max="16" value="8"></label>
+          <label>讲台在 <select id="layoutPodium" title="讲台方位，只影响显示：第一排永远靠讲台"><option value="top">上方</option><option value="bottom">下方</option></select></label>
           <label>门在 <select id="layoutDoor"><option value="left">左侧</option><option value="right">右侧</option></select></label>
           <label>过道位置 <input type="text" id="layoutAisles" value="2,4,6" placeholder="如 2,4,6" title="过道在第几列后，多个用逗号分隔，如 2,4,6 = xx|xx|xx|xx；空 = 无过道"></label>
         </div>
       </div>
-      <div class="layout-hint muted" style="margin:-8px 0 10px;font-size:12px">门在左 → 座位号 (排,列) 从左数，第 1 列靠门；门在右 → 从右数，最后一列靠门。过道位置：多个过道用逗号分隔，例 <b>2,4,6</b> → xx|xx|xx|xx；<b>2,5,7</b> → xx|xxx|xx|xx（含 3 列组，可坐 3 人同桌）</div>
+      <div class="layout-hint muted" style="margin:-8px 0 10px;font-size:12px"><b>讲台在上/在下、门在左/在右</b>只影响显示：<b>第 1 排永远靠讲台</b>，座位号 (列,排)（列在前、排在后）的列号永远从门那一侧数。过道位置：多个过道用逗号分隔，例 <b>2,4,6</b> → xx|xx|xx|xx；<b>2,5,7</b> → xx|xxx|xx|xx（含 3 列组，可坐 3 人同桌）。<b>过道不计入任何距离</b>：隔着过道的左右邻座视为相邻 1 格。</div>
       <div id="layoutStats" class="layout-stats"></div>
       <div class="layout-tools">
         <span class="tool-label">区域工具：</span>

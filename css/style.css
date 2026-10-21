@@ -171,11 +171,16 @@ input[type="range"] { accent-color: var(--primary); }
 .door-mark.back { bottom: 16%; }
 .door-mark.left { left: -6px; }
 .door-mark.right { right: -6px; }
+/* 讲台在下：整间教室上下翻转 → 前门贴底、后门贴顶（座位已由 JS 按 visualRow 倒序摆放） */
+.door-mark.flip { border-radius: 0 0 7px 7px; }
+.door-mark.flip.front { top: auto; bottom: 16%; }
+.door-mark.flip.back { bottom: auto; top: 16%; }
 .podium {
   grid-column: 1 / -1; text-align: center; padding: 8px 0; margin-bottom: 4px;
   background: #eef2ff; color: #3730a3; border: 1px dashed #c7d2fe; border-radius: 8px;
   font-size: 13px; font-weight: 600; letter-spacing: 6px;
 }
+.seat-grid.podium-bottom .podium { margin-bottom: 0; margin-top: 4px; }
 .aisle-gap {
   height: 100%;
   position: relative;

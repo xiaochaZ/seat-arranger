@@ -73,8 +73,11 @@
     g.textAlign = 'center';
     g.fillText(title || '班级座位表', totalW / 2, PAD - 4);
 
-    // 讲台
-    const podiumY = PAD + 14;
+    // 讲台方位（bottom = 讲台在下：座位区顶到标题下，讲台画在最下面，逻辑第一排画在最下面）
+    const podiumBottom = S.Layout.podiumSide(layout) === 'bottom';
+    const blockH = rows * (CELL_H + GAP) - GAP;   // 座位区总高
+    const seatsTop = podiumBottom ? (PAD + 14) : (PAD + 14 + PODIUM_H + GAP);
+    const podiumY = podiumBottom ? (seatsTop + blockH + GAP) : (PAD + 14);
     g.fillStyle = '#eef2ff';
     g.strokeStyle = '#c7d2fe';
     g.setLineDash([5, 4]);
@@ -87,8 +90,8 @@
     g.fillText('讲 台', totalW / 2, podiumY + PODIUM_H / 2);
 
     // 过道（与网页 .aisle-gap 样式一致：浅底 + 两侧虚线 + 中缝虚线；支持多个）
-    const aisleTop = podiumY + PODIUM_H + GAP;
-    const aisleH = rows * (CELL_H + GAP) - GAP;
+    const aisleTop = seatsTop;
+    const aisleH = blockH;
     aisles.forEach(function (a) {
       const ax = PAD + colOffsetX(a) + a * (CELL_W + GAP) + GAP + AISLE_W / 2;
       g.fillStyle = '#f8fafc';
@@ -108,7 +111,7 @@
     for (let r = 1; r <= rows; r++) {
       for (let c = 1; c <= cols; c++) {
         const x = PAD + (c - 1) * (CELL_W + GAP) + colOffsetX(c);
-        const y = podiumY + PODIUM_H + GAP + (r - 1) * (CELL_H + GAP);
+        const y = seatsTop + (S.Layout.visualRow(layout, r) - 1) * (CELL_H + GAP);
         const key = S.Layout.seatKey(r, c);
         const unavailable = layout.unavailable.indexOf(key) >= 0;
         const areaIdx = S.Layout.areaIndexOfSeat(layout, key);
@@ -185,14 +188,20 @@
         g.arc(doorX + doorW - 4, dy + doorH / 2 - 4, 2, 0, Math.PI * 2);
         g.fill();
       };
-      drawDoor(aisleTop + aisleH * 0.14, '前门');
-      drawDoor(aisleTop + aisleH * 0.86 - doorH, '后门');
+      // 前门永远靠近讲台/第一排，后门靠近末排；讲台在下时两者上下互换
+      if (podiumBottom) {
+        drawDoor(aisleTop + aisleH * 0.86 - doorH, '前门');
+        drawDoor(aisleTop + aisleH * 0.14, '后门');
+      } else {
+        drawDoor(aisleTop + aisleH * 0.14, '前门');
+        drawDoor(aisleTop + aisleH * 0.86 - doorH, '后门');
+      }
     }
 
     // 脚注
     g.fillStyle = '#94a3b8';
     g.font = '11px "Microsoft YaHei", sans-serif';
-    g.fillText('生成时间：' + new Date().toLocaleString('zh-CN') + '　·　违规 ' + evalResult.violations.length + ' 条', totalW / 2, totalH - 12);
+    g.fillText('座位号 (列,排)　·　生成时间：' + new Date().toLocaleString('zh-CN') + '　·　违规 ' + evalResult.violations.length + ' 条', totalW / 2, totalH - 12);
 
     // 用同步 toDataURL 而非异步 toBlob：避免失去用户手势导致下载被浏览器拦截
     try {
@@ -213,18 +222,20 @@
   function exportExcel(title, layout, students, assignment, rules) {
     const S = global.Seat;
     const rowsData = [];
-    rowsData.push(['排', '桌', '列', '姓名', '备注']);
+    rowsData.push(['列', '排', '桌', '姓名', '备注']);
     for (let r = 1; r <= layout.rows; r++) {
       for (let c = 1; c <= layout.cols; c++) {
         const key = S.Layout.seatKey(r, c);
+        // 列号对外用 displayCol（从门那侧数），与座位图上的 (列,排) 一致
+        const dcol = S.Layout.displayCol(layout, c);
         if (layout.unavailable.indexOf(key) >= 0) {
-          rowsData.push([r, '', c, '（不可用）', '']);
+          rowsData.push([dcol, r, '', '（不可用）', '']);
           continue;
         }
         const sid = assignment[key];
         const st = sid ? students.find(function (x) { return x.id === sid; }) : null;
         const desk = S.Layout.deskNo(layout, r, c);
-        rowsData.push([r, desk || '', c, st ? st.name : '', st ? st.note : '']);
+        rowsData.push([dcol, r, desk || '', st ? st.name : '', st ? st.note : '']);
       }
     }
     const fname = (title || '座位表').replace(/[\\/:*?"<>|]/g, '_');

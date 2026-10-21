@@ -1,9 +1,14 @@
 /**
  * layout.js — 教室布局数据模型与工具函数
- * 座位坐标格式：'r{排}c{列}'，从 1 开始，如 'r1c2' = 第1排第2列
+ * 座位内部 key 格式：'r{排}c{列}'，从 1 开始，如 'r1c2' = 第1排第2列（**仅内部/算法用**）
+ * 座位对外显示文案：seatLabel() 返回 '(列,排)'，列号从门那边数，如 'r5c3' → '(3,5)' = 第3列第5排
  * 过道模型：layout.aisles = [2,4,6] 表示过道在第 2、4、6 列后（可任意多个，空数组=无过道）
  *   e.g. 8 列 [2,4,6] → xx|xx|xx|xx（4 组每组 2 列）
  *   e.g. 9 列 [2,5,7] → xx|xxx|xx|xx（含 3 列组，可坐 3 人连排同桌）
+ *   **过道只影响渲染（视觉上多一条轨道）与同桌判定（跨过道不算同桌），不计入距离**：
+ *   跨过道的相邻两列，曼哈顿距离仍是 1（用户 2026-10-17 明确要求，别再加回来）
+ * 讲台方位：layout.podiumSide = 'top'（默认，第一排在最上面）| 'bottom'（讲台在下，第一排在最下面）
+ *   **只影响显示**：排号/座位号/全部规则语义不变，r1 永远是靠讲台的"第一排"
  * 同桌：同排、列连续、同一组内（组 = 过道之间的连续列块）
  * 全局命名空间：Seat.Layout
  */
@@ -14,7 +19,7 @@
   const ZONE_COLORS = ['#dbeafe', '#dcfce7', '#fef9c3', '#fce7f3', '#ede9fe', '#ffedd5', '#cffafe', '#fecaca'];
 
   function defaultLayout() {
-    return { rows: 6, cols: 8, aisles: [2, 4, 6], doorSide: 'left', unavailable: [], areas: [] };
+    return { rows: 6, cols: 8, aisles: [2, 4, 6], doorSide: 'left', podiumSide: 'top', unavailable: [], areas: [] };
   }
 
   /** 清洗过道数组：数字、范围 1..cols-1、去重、升序 */
@@ -130,14 +135,27 @@
     return { dr: Math.abs(a.row - b.row), dc: Math.abs(a.col - b.col) };
   }
 
-  /** 两座位曼哈顿距离：|Δ排| + |Δ列|，列按含过道的网格坐标计（过道占一轨） */
+  /** 两座位曼哈顿距离：|Δ排| + |Δ列|（**按座位列数算，过道不计入**）
+   *  即：隔着一条过道的左右两个邻座，距离仍然是 1（与 seatDistance 的列差一致） */
   function manhattanDistance(layout, keyA, keyB) {
     const a = parseSeatKey(keyA), b = parseSeatKey(keyB);
     if (!a || !b) return 9999;
-    return Math.abs(a.row - b.row) + Math.abs(gridColIndex(layout, a.col) - gridColIndex(layout, b.col));
+    return Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
   }
 
-  /** 列 c 在 grid 中的列索引（每个过道占一个额外轨道） */
+  /* ── 讲台方位（只影响显示，不影响算法） ── */
+
+  /** 讲台方位：'top'（默认，第一排在最上）| 'bottom'（讲台在下，第一排在最下） */
+  function podiumSide(layout) {
+    return layout && layout.podiumSide === 'bottom' ? 'bottom' : 'top';
+  }
+
+  /** 逻辑排号 → 视觉行序（从上到下 1..rows）：讲台在上 r1 是最上行；讲台在下 r1 是最下行 */
+  function visualRow(layout, row) {
+    return podiumSide(layout) === 'bottom' ? (layout.rows - row + 1) : row;
+  }
+
+  /** 列 c 在 grid 中的列索引（每个过道占一个额外轨道；仅渲染用） */
   function gridColIndex(layout, col) {
     let off = 0;
     (layout.aisles || []).forEach(function (a) { if (a < col) off++; });
@@ -174,11 +192,11 @@
     return layout.doorSide === 'right' ? (layout.cols - col + 1) : col;
   }
 
-  /** 座位显示文案：(排,列) 坐标，列号从门那边数 */
+  /** 座位显示文案：(列,排) 坐标，列号从门那边数（用户 2026-10-17 纠偏：先说列、再说排，3列5排 → (3,5)） */
   function seatLabel(layout, key) {
     const p = parseSeatKey(key);
     if (!p) return '';
-    return '(' + p.row + ',' + displayCol(layout, p.col) + ')';
+    return '(' + displayCol(layout, p.col) + ',' + p.row + ')';
   }
 
   /* ── 区域 CRUD ── */
@@ -223,6 +241,7 @@
     ZONE_COLORS, defaultLayout, normalizeAisles, columnGroups, groupIndexOf,
     seatKey, parseSeatKey, allSeats, availableSeats, isSeatAvailable,
     deskNo, sameDesk, sameDeskN, seatDistance, manhattanDistance, gridColIndex, gridAisleIndex, displayCol,
+    podiumSide, visualRow,
     areaOfSeat, areaIndexOfSeat, seatLabel,
     addArea, renameArea, removeArea, findArea, toggleAreaSeat, canGenerate
   };

@@ -200,11 +200,50 @@ test('隔离规则：hv 填 0 的方向只看"正同一排/列"（不是"不限"
   const none = { id: 'r3', type: 'separate', mode: 'hv', aId: 's1', bId: 's2', minRows: 0, minCols: 0, weight: 40, hard: false };
   assert.strictEqual(check(none, 'r4c4').totalCost, 0);
 });
-test('曼哈顿距离：过道计入距离', function () {
+test('曼哈顿距离：过道不计入（隔着过道也是相邻 1 格）', function () {
   const L = makeLayout({ rows: 3, cols: 6, aisles: [3] });
   assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c1', 'r1c2'), 1, '同组相邻 1 格');
-  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c3', 'r1c4'), 2, '跨过道相邻算 2 格');
-  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c3', 'r2c4'), 3, '行差1 + 列差2 = 3');
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c3', 'r1c4'), 1, '跨过道相邻仍是 1 格（过道不算一格）');
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c2', 'r1c4'), 2, '隔 1 列（跨过道）也是 2 格');
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c3', 'r2c4'), 2, '行差1 + 列差1 = 2');
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c1', 'r1c6'), 5, '列差按座位列数，不叠加过道');
+  // 与 seatDistance 的列差一致（同一套几何，避免两处算法打架）
+  const p = S.Layout.seatDistance('r1c2', 'r1c3');
+  assert.strictEqual(S.Layout.manhattanDistance(L, 'r1c2', 'r1c3'), p.dr + p.dc, '与 seatDistance 一致');
+});
+test('隔离规则（曼哈顿）：跨过道相邻只算 1 格 → 仍违规', function () {
+  const students = makeStudents(['张三', '李四']);
+  const L = makeLayout({ rows: 3, cols: 6, aisles: [3] });
+  const ctx = { layout: L, students: students };
+  const rule = { id: 'r1', type: 'separate', mode: 'manhattan', aId: 's1', bId: 's2', minDist: 2, weight: 40, hard: false };
+  // 隔着过道的左右邻座：距离 1 → 差 1 → 1×40（旧算法会算成 2 而误判满足）
+  let r = S.Cost.evaluate(makeAssignment({ 0: 'r1c3', 1: 'r1c4' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 40, '跨过道相邻只算 1 格 → 违规');
+  r = S.Cost.evaluate(makeAssignment({ 0: 'r1c3', 1: 'r1c5' }), [rule], ctx);
+  assert.strictEqual(r.totalCost, 0, '同排隔 2 列 → 距离 2 → 满足');
+});
+test('讲台方位：只影响显示（visualRow 映射）', function () {
+  const top = makeLayout({ rows: 6, cols: 8, aisles: [2, 4, 6] });
+  assert.strictEqual(S.Layout.podiumSide(top), 'top', '默认讲台在上');
+  assert.strictEqual(S.Layout.visualRow(top, 1), 1, '讲台在上：r1 在最上行');
+  assert.strictEqual(S.Layout.visualRow(top, 6), 6, '讲台在上：r6 在最下行');
+  const bottom = makeLayout({ rows: 6, cols: 8, aisles: [2, 4, 6], podiumSide: 'bottom' });
+  assert.strictEqual(S.Layout.podiumSide(bottom), 'bottom');
+  assert.strictEqual(S.Layout.visualRow(bottom, 1), 6, '讲台在下：r1 在最下行（靠讲台）');
+  assert.strictEqual(S.Layout.visualRow(bottom, 6), 1, '讲台在下：r6 在最上行（靠后门）');
+  // 与算法无关：同样两个座位的距离/同桌判定不因讲台方位变化
+  assert.strictEqual(S.Layout.manhattanDistance(bottom, 'r1c1', 'r2c2'), 2);
+  assert.ok(S.Layout.sameDesk(bottom, 'r1c1', 'r1c2'), '同桌判定不受讲台方位影响');
+});
+test('座位显示坐标：(列,排)，列号从门那侧数', function () {
+  const L = makeLayout({ rows: 6, cols: 8, aisles: [2, 4, 6] });
+  assert.strictEqual(S.Layout.seatLabel(L, 'r5c3'), '(3,5)', '第3列第5排应显示 (3,5)');
+  assert.strictEqual(S.Layout.seatLabel(L, 'r1c1'), '(1,1)');
+  assert.strictEqual(S.Layout.seatLabel(L, 'r6c8'), '(8,6)');
+  // 门在右 → 列号镜像（从门那侧数），仍是列在前
+  const R = makeLayout({ rows: 6, cols: 8, aisles: [2, 4, 6], doorSide: 'right' });
+  assert.strictEqual(S.Layout.displayCol(R, 3), 6);
+  assert.strictEqual(S.Layout.seatLabel(R, 'r5c3'), '(6,5)', '门在右时同一座位显示为第 6 列');
 });
 test('区域规则：在区域内满足，不在则违规', function () {
   const students = makeStudents(['张三']);

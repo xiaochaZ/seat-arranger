@@ -349,6 +349,7 @@
     $('layoutCols').value = layout.cols;
     $('layoutAisles').value = (layout.aisles || []).join(',');
     $('layoutDoor').value = layout.doorSide === 'right' ? 'right' : 'left';
+    $('layoutPodium').value = S().Layout.podiumSide(layout) === 'bottom' ? 'bottom' : 'top';
     renderAreaSelect();
     S().Render.renderLayoutEditor($('layoutGrid'), layout, ui.selectedAreaId);
     // 区域高亮：非选中区域变浅（CSS 已按 zone 色区分；选中区域用边框强调）
@@ -412,12 +413,13 @@
       .filter(function (n) { return !isNaN(n); });
     const aisles = S().Layout.normalizeAisles(rawAisles, cols);
     const doorSide = $('layoutDoor').value === 'right' ? 'right' : 'left';
+    const podiumSide = $('layoutPodium').value === 'bottom' ? 'bottom' : 'top';
     const old = d.layout;
     const inBounds = function (k) {
       const p = S().Layout.parseSeatKey(k);
       return p && p.row >= 1 && p.row <= rows && p.col >= 1 && p.col <= cols;
     };
-    const nl = { rows: rows, cols: cols, aisles: aisles, doorSide: doorSide, unavailable: [], areas: [] };
+    const nl = { rows: rows, cols: cols, aisles: aisles, doorSide: doorSide, podiumSide: podiumSide, unavailable: [], areas: [] };
     (old.areas || []).forEach(function (a) {
       nl.areas.push({ id: a.id, name: a.name, seats: a.seats.filter(inBounds) });
     });
@@ -510,7 +512,7 @@
       '<div class="form-row only-separate only-group" id="distRow" ' + ((r.mode === 'manhattan' || r.mode === 'distance') ? '' : 'style="display:none"') + '>' +
       '<label>最小距离（格）</label>' +
       '<input type="number" id="r_minDist" min="0" max="24" style="width:80px" value="' + (r.minDist != null ? r.minDist : ((r.minRows || 0) + (r.minCols || 0))) + '">' +
-      '<div class="hint">曼哈顿距离 = 行差 + 列差（过道占一格）。如"相距至少 3 格"：同行隔 3 列、或隔 1 排 2 列等</div></div>' +
+      '<div class="hint">曼哈顿距离 = 行差 + 列差，<b>过道不计入</b>（隔着过道的左右邻座算 1 格）。如"相距至少 3 格"：同行隔 3 列、或隔 1 排 2 列等</div></div>' +
       '<div class="form-row only-separate only-group" id="hvRow" ' + (r.mode === 'hv' ? '' : 'style="display:none"') + '>' +
       '<label>周围范围</label>' +
       '对方前后 <input type="number" id="r_minRows" min="0" max="12" style="width:64px" value="' + (r.minRows || 0) + '"> 排内、' +
@@ -916,6 +918,13 @@
       const d = S().Storage.currentData(state);
       if (!d) return;
       d.layout.doorSide = this.value === 'right' ? 'right' : 'left';
+      saveAndRender();
+    });
+    // 讲台方位实时生效（只影响显示，不清空方案；第 1 排始终靠讲台）
+    $('layoutPodium').addEventListener('change', function () {
+      const d = S().Storage.currentData(state);
+      if (!d) return;
+      d.layout.podiumSide = this.value === 'bottom' ? 'bottom' : 'top';
       saveAndRender();
     });
     $('btnNewArea').onclick = newArea;

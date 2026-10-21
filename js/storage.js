@@ -13,13 +13,14 @@
     return (prefix || 'x') + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
-  /** 默认布局：6排 × 8列，3 个过道 → xx|xx|xx|xx，门在左 */
+  /** 默认布局：6排 × 8列，3 个过道 → xx|xx|xx|xx，门在左，讲台在上 */
   function defaultLayout() {
     return {
       rows: 6,
       cols: 8,
       aisles: [2, 4, 6],       // 过道位置（第 N 列后），可任意多个
       doorSide: 'left',        // 门方位：left = 列号从左数；right = 列号从右数（靠门）
+      podiumSide: 'top',       // 讲台方位：top = 讲台在上（r1 最上）；bottom = 讲台在下（r1 最下）；只影响显示
       unavailable: [],         // ['r1c3', ...]
       areas: []                // [{id, name, seats: [...]}]
     };
@@ -58,7 +59,7 @@
     return state.classes.find(function (c) { return c.id === state.currentClassId; }) || null;
   }
 
-  /** 迁移旧版布局数据：aisleAfterCol → aisles（多过道模型）；补 doorSide */
+  /** 迁移旧版布局数据：aisleAfterCol → aisles（多过道模型）；补 doorSide / podiumSide */
   function migrateLayout(layout) {
     if (!layout) return layout;
     if (layout.aisles === undefined && typeof layout.aisleAfterCol === 'number') {
@@ -66,6 +67,7 @@
     }
     if (!Array.isArray(layout.aisles)) layout.aisles = [];
     if (!layout.doorSide) layout.doorSide = 'left';
+    if (layout.podiumSide !== 'bottom') layout.podiumSide = 'top';
     return layout;
   }
 
